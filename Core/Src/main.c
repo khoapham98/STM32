@@ -16,7 +16,7 @@ typedef enum{
 typedef enum{
 	OFF,
 	ON
-} state_e;
+} LED_state;
 
 void LEDsInit()
 {
@@ -47,7 +47,7 @@ char isPressed()
 	return 0;
 }
 
-void ctrlLEDs(LED_color color, state_e state)
+void ctrlLEDs(LED_color color, LED_state state)
 {
 	uint32_t* GPIOD_ODR = GPIOD_BASE_ADDR + ODR_OFFSET;
 	if (state == ON)
@@ -66,8 +66,7 @@ int main()
 	HAL_Init();
 	LEDsInit();
 	ButtonInit();
-	state_e state = OFF;
-
+	LED_state state = OFF;
 	ctrlLEDs(RED, state);
 	ctrlLEDs(BLUE, state);
 
