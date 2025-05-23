@@ -1,5 +1,4 @@
 #include "main.h"
-#include <stdlib.h>
 
 #define GPIOD_BASE_ADDR 0x40020C00
 #define GPIOA_BASE_ADDR 0x40020000
@@ -7,69 +6,107 @@
 #define ODR_OFFSET 0x14
 #define IDR_OFFSET 0x10
 
-int arr[40] = {0};
-void delay_us(uint32_t x) {
-    for (int i = 0; i < (x * 8); i++) {
-        __NOP();
-    }
-}
+typedef enum{
+	GREEN,
+	ORANGE,
+	RED,
+	BLUE
+} LED_color;
 
-void DHT11Init()
+typedef enum{
+	OFF,
+	ON
+} LED_state;
+
+void LEDsInit()
 {
 	__HAL_RCC_GPIOD_CLK_ENABLE();
 	uint32_t* GPIOD_MODER = GPIOD_BASE_ADDR + MODER_OFFSET;
-	// set PD2 as OUTPUT to activate DHT11
-	*GPIOD_MODER &= ~(0b11 << 4);
-	*GPIOD_MODER |= (0b01 << 4);
+	// set PD12, PD13, PD14, PD15 OUTPUT
+	*GPIOD_MODER &= ~(0b11111111 << 24);
+	*GPIOD_MODER |= (0b01010101 << 24);
+}
+void ButtonInit()
+{
+	__HAL_RCC_GPIOA_CLK_ENABLE();
+	uint32_t* GPIOA_MODER = GPIOA_BASE_ADDR + MODER_OFFSET;
+	// set PA0 as INPUT
+	*GPIOA_MODER &= ~(0b11);
+}
+char isPressed()
+{
+	uint32_t* GPIOA_IDR = GPIOA_BASE_ADDR + IDR_OFFSET;
 
+	if ((*GPIOA_IDR & 0b1) == 1)
+	{
+		return 1;
+	}
+
+	return 0;
+}
+void ctrlLEDs(LED_color color, LED_state state)
+{
 	uint32_t* GPIOD_ODR = GPIOD_BASE_ADDR + ODR_OFFSET;
-	// set PD2 out bit 0 for 20ms to activate DHT11
-	*GPIOD_ODR &= ~(0b1 << 2);
-	HAL_Delay(20);
-	// set PD2 out bit 1 for 30us to end the activate command
-	*GPIOD_ODR |= (0b1 << 2);
-	delay_us(30);
-
-	// set PD2 as INPUT to receive data from DHT11
-	*GPIOD_MODER &= ~(0b11 << 4);
-
-	// wait for 2 ACK phases
-	delay_us(135);
-
-	readDHT11(arr, 40);
-}
-
-int read_one_bit()
-{
-	uint32_t* GPIOD_IDR = GPIOD_BASE_ADDR + IDR_OFFSET;
-
-	//wait for low
-	while (((*GPIOD_IDR >> 2) & 0b1) == 0b1);
-
-	// wait for high
-	while (((*GPIOD_IDR >> 2) & 0b1) == 0b0);
-
-	delay_us(30);
-
-	return (((*GPIOD_IDR >> 2) & 0b1) == 0b1) ? 1 : 0;
-}
-
-void readDHT11(int* arr, int size)
-{
-	for (int i = 0; i < 40; i++) {
-		int bit = read_one_bit();
-		if (bit < 0) return;
-		arr[i] = bit;
+	if (state == ON)
+	{
+		*GPIOD_ODR |= (1 << (color + 12));
+	}
+	else
+	{
+		*GPIOD_ODR &= ~(1 << (color + 12));
 	}
 }
 
+#define EXTI_BASE_ADDR 0x40013C00
+void EXTI0Init()
+{
+// set Rising and falling register enable
+	uint32_t* EXTI_RTSR = EXTI_BASE_ADDR + 0x08;
+	uint32_t* EXTI_FTSR = EXTI_BASE_ADDR + 0x0C;
+	*EXTI_RTSR |= 0b1;
+	*EXTI_FTSR |= 0b1;
 
+// set Interrupt Mask register enable
+	uint32_t* EXTI_IMR = EXTI_BASE_ADDR + 0x00;
+	*EXTI_IMR |= 0b1;
+
+// set NVIC_ISER0 register bit 6
+	uint32_t* NVIC_ISER0 = 0xE000E100;
+	*NVIC_ISER0 |= (0b1 << 6);
+}
+
+void EXTI0_IRQHandler()
+{
+	if (isPressed())
+	{
+		while(isPressed())
+		{
+			ctrlLEDs(BLUE, ON);
+		}
+		ctrlLEDs(BLUE, OFF);
+	}
+//	else
+//	{
+//		ctrlLEDs(BLUE, OFF);
+//	}
+	uint32_t* EXTI_PR = EXTI_BASE_ADDR + 0x14;
+	*EXTI_PR |= 0b1;
+}
+
+int cnt, time;
 int main()
 {
 	HAL_Init();
-	DHT11Init();
+	LEDsInit();
+	ButtonInit();
+	EXTI0Init();
 
-
-
+	while (1)
+	{
+		ctrlLEDs(RED, ON);
+		HAL_Delay(1000);
+		ctrlLEDs(RED, OFF);
+		HAL_Delay(1000);
+	}
 	return 0;
 }
