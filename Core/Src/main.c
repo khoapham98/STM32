@@ -1,10 +1,11 @@
 #include "main.h"
-
+#include <string.h>
 #define GPIOD_BASE_ADDR 0x40020C00
 #define GPIOA_BASE_ADDR 0x40020000
 #define MODER_OFFSET 0x00
 #define ODR_OFFSET 0x14
 #define IDR_OFFSET 0x10
+#define EXTI_BASE_ADDR 0x40013C00
 
 typedef enum{
 	GREEN,
@@ -17,6 +18,65 @@ typedef enum{
 	OFF,
 	ON
 } LED_state;
+
+void EXTI0_IRQHandler()
+{
+	if (isPressed() == 1)
+	{
+		ctrlLEDs(BLUE, ON);
+	}
+	else
+	{
+		ctrlLEDs(BLUE, OFF);
+	}
+
+	uint32_t* EXTI_PR = EXTI_BASE_ADDR + 0x14;
+	*EXTI_PR |= (0b1 << 0);
+}
+
+void custom_Handler()
+{
+	if (isPressed())
+	{
+		ctrlLEDs(GREEN, ON);
+	}
+	else
+	{
+		ctrlLEDs(GREEN, OFF);
+	}
+
+	uint32_t* EXTI_PR = EXTI_BASE_ADDR + 0x14;
+	*EXTI_PR |= (0b1 << 0);
+}
+void EXTI_Init()
+{
+	// B1
+	uint32_t* EXTI_RTSR = EXTI_BASE_ADDR + 0x08;
+	uint32_t* EXTI_FTSR = EXTI_BASE_ADDR + 0x0C;
+	*EXTI_RTSR |= (0b1 << 0);
+	*EXTI_FTSR |= (0b1 << 0);
+
+	// B2
+	uint32_t* EXTI_IMR = EXTI_BASE_ADDR + 0x00;
+	*EXTI_IMR |= (0b1 << 0);
+
+	// B3
+	uint32_t* NVIC_ISER0 = 0xE000E100;
+	*NVIC_ISER0 |= (0b1 << 6);
+
+	// copy data of vector table from FLASH to RAM so that we'll be able to R&W the data
+	memcpy(0x20000000, 0x00, 0x198);
+
+	// Let ARM know that the vector table has been offset into RAM
+	uint32_t* VTOR = 0xE000ED08;
+	*VTOR = 0x20000000; 			// start addr of RAM
+
+	// the memory area contains the address of the default interrupt function (EXTI0_IRQHandler): 0x58
+	// Because the vector table has been copied to RAM:
+	// => the memory area contains the address of the EXTIO_IRQHandler function: 0x2000 0058
+	uint32_t* fptr = 0x20000058;
+	*fptr = custom_Handler; // change the default interrupt function (EXTIO_IRQHandler) to my own interrupt function (custom_Handler)
+}
 
 void LEDsInit()
 {
@@ -33,11 +93,12 @@ void ButtonInit()
 	// set PA0 as INPUT
 	*GPIOA_MODER &= ~(0b11);
 }
-char isPressed()
+
+int isPressed()
 {
 	uint32_t* GPIOA_IDR = GPIOA_BASE_ADDR + IDR_OFFSET;
 
-	if ((*GPIOA_IDR & 0b1) == 1)
+	if ((*GPIOA_IDR & 0b1) == 0b1)
 	{
 		return 1;
 	}
@@ -57,56 +118,21 @@ void ctrlLEDs(LED_color color, LED_state state)
 	}
 }
 
-#define EXTI_BASE_ADDR 0x40013C00
-void EXTI0Init()
-{
-// set Rising and falling register enable
-	uint32_t* EXTI_RTSR = EXTI_BASE_ADDR + 0x08;
-	uint32_t* EXTI_FTSR = EXTI_BASE_ADDR + 0x0C;
-	*EXTI_RTSR |= 0b1;
-	*EXTI_FTSR |= 0b1;
 
-// set Interrupt Mask register enable
-	uint32_t* EXTI_IMR = EXTI_BASE_ADDR + 0x00;
-	*EXTI_IMR |= 0b1;
-
-// set NVIC_ISER0 register bit 6
-	uint32_t* NVIC_ISER0 = 0xE000E100;
-	*NVIC_ISER0 |= (0b1 << 6);
-}
-
-void EXTI0_IRQHandler()
-{
-	if (isPressed())
-	{
-		while(isPressed())
-		{
-			ctrlLEDs(BLUE, ON);
-		}
-		ctrlLEDs(BLUE, OFF);
-	}
-//	else
-//	{
-//		ctrlLEDs(BLUE, OFF);
-//	}
-	uint32_t* EXTI_PR = EXTI_BASE_ADDR + 0x14;
-	*EXTI_PR |= 0b1;
-}
-
-int cnt, time;
 int main()
 {
 	HAL_Init();
 	LEDsInit();
 	ButtonInit();
-	EXTI0Init();
+	EXTI_Init();
 
 	while (1)
 	{
 		ctrlLEDs(RED, ON);
-		HAL_Delay(1000);
+		HAL_Delay(500);
 		ctrlLEDs(RED, OFF);
-		HAL_Delay(1000);
+		HAL_Delay(500);
 	}
+
 	return 0;
 }
