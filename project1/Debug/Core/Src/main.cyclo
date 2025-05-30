@@ -1,0 +1,7 @@
+../Core/Src/main.c:20:6:LEDsInit	1
+../Core/Src/main.c:28:6:ButtonInit	1
+../Core/Src/main.c:35:5:isPressed	2
+../Core/Src/main.c:46:6:ctrlLEDs	2
+../Core/Src/main.c:59:6:EXTI_Init	1
+../Core/Src/main.c:75:6:EXTI4_IRQHandler	2
+../Core/Src/main.c:90:5:main	1
