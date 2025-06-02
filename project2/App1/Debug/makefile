@@ -60,8 +60,8 @@ all: main-build
 main-build: App1.elf secondary-outputs
 
 # Tool invocations
-App1.elf App1.map: $(OBJS) $(USER_OBJS) D:\workspace\embedded\stm32\workspace_1.18.1\App1\STM32F411VETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "App1.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\workspace\embedded\stm32\workspace_1.18.1\App1\STM32F411VETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="App1.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+App1.elf App1.map: $(OBJS) $(USER_OBJS) D:\workspace\embedded\stm32\workspace_1.18.1\prj1\project2\App1\STM32F411VETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "App1.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\workspace\embedded\stm32\workspace_1.18.1\prj1\project2\App1\STM32F411VETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="App1.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
