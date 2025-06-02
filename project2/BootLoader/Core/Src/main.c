@@ -1,186 +1,94 @@
-/* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2025 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <strings.h>
+#define GPIOD_BASE_ADDR 0x40020C00
+#define GPIOA_BASE_ADDR 0x40020000
+#define EXTI_BASE_ADDR 0x40013C00
 
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
+typedef enum{
+	OFF, ON
+} LED_state;
 
-/* USER CODE END Includes */
-
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
-
-/* USER CODE BEGIN PV */
-
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-/* USER CODE BEGIN PFP */
-
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-
-/* USER CODE END 0 */
-
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
-int main(void)
+void LED_Init()
 {
-
-  HAL_Init();
-  MX_GPIO_Init();
-
-  uint32_t* ptr;
-  void (*pf)();
-  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1)
-  {
-	  ptr = (uint32_t*)0x8004004;
-  }
-  else
-  {
-	  ptr = (uint32_t*)0x8008004;
-  }
-  pf = (void (*)()) *ptr;
-  pf();
-
+	__HAL_RCC_GPIOD_CLK_ENABLE();
+	// Declare GPIOD's MODER Register
+	uint32_t* GPIOD_MODER = (uint32_t*) (GPIOD_BASE_ADDR + 0x00);
+	// Clear pin PD15
+	*GPIOD_MODER &= ~(0b11 << 30);
+	// Set pin PD15 as OUTPUT
+	*GPIOD_MODER |= (0b01 << 30);
 }
 
-/**
-  * @brief System Clock Configuration
-  * @retval None
-  */
-void SystemClock_Config(void)
+void LED_ctrl(LED_state state)
 {
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
-
-  /** Configure the main internal regulator output voltage
-  */
-  __HAL_RCC_PWR_CLK_ENABLE();
-  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
-
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
-
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
-  {
-    Error_Handler();
-  }
+	// Declare GPIOD's ODR Register
+	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE_ADDR + 0x14);
+	// Set output state for pin PD15
+	if (state == ON)
+	{
+		*GPIOD_ODR |= (0b1 << 15);
+	}
+	else if (state == OFF)
+	{
+		*GPIOD_ODR &= ~(0b1 << 15);
+	}
 }
 
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
+void EXTI_Init()
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-  /* USER CODE BEGIN MX_GPIO_Init_1 */
+	__HAL_RCC_GPIOA_CLK_ENABLE();
+	// Declare GPIOA's MODER Register
+	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE_ADDR + 0x00);
 
-  /* USER CODE END MX_GPIO_Init_1 */
+	// Set pin PA0 as INPUT
+	*GPIOA_MODER &= ~(0b11 << 0);
 
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
+	// Declare EXTI line 0's FTSR Register and set to HIGH
+	uint32_t* EXTI_FTSR = (uint32_t*) (EXTI_BASE_ADDR + 0x0C);
+	*EXTI_FTSR |= (0b1 << 0);
 
-  /*Configure GPIO pin : PA0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+	// Declare EXTI line 0's IMR Register and set to HIGH
+	uint32_t* EXTI_IMR = (uint32_t*) (EXTI_BASE_ADDR + 0x00);
+	*EXTI_IMR |= (0b1 << 0);
 
-  /* USER CODE BEGIN MX_GPIO_Init_2 */
-
-  /* USER CODE END MX_GPIO_Init_2 */
+	// Set the NVIC ISER0 at position 6 to HIGH
+	uint32_t* NVIC_ISER0 = (uint32_t*) 0xE000E100;
+	*NVIC_ISER0 |= (0b1 << 6);
 }
 
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
+void EXTI0_IRQHandler()
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+	// Reset the PR Register to turn off the interrupt flag
+	uint32_t* EXTI_PR = (uint32_t*) (EXTI_BASE_ADDR + 0x14);
+	*EXTI_PR |= (0b1 << 0);
+
+	// Turn off Blue LED before jump
+	LED_ctrl(OFF);
+
+	// Let ARM know that the vector table has been moved to 0x0800 4000 (beginning off App1 firmware)
+	uint32_t* VTOR = (uint32_t*) 0xE000ED08;
+	*VTOR = 0x08004000;
+
+	// Jump to Reset Handler function of App1
+	uint32_t* ptr = (uint32_t*) 0x08004004;
+	void (*pf)() = (void (*)()) *ptr;
+
+	pf();
 }
 
-#ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
+int main()
 {
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
+	HAL_Init();
+	LED_Init();
+	EXTI_Init();
+
+	while (1)
+	{
+		LED_ctrl(ON);
+		HAL_Delay(1000);
+		LED_ctrl(OFF);
+		HAL_Delay(1000);
+	}
+
+	return 0;
 }
-#endif /* USE_FULL_ASSERT */
