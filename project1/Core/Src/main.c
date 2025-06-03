@@ -48,39 +48,30 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+char isPressed();
+void ctrl_LED();
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void EXTI9_5_IRQHandler()
+{
+	while (isPressed())
+	{
+		ctrl_LED(1);
+	}
 
+	EXTI->PR |= (0b1 << 8);
+}
 /* USER CODE END 0 */
 
 /**
   * @brief  The application entry point.
   * @retval int
   */
-char isPressed()
-{
-	if (((GPIOC->IDR >> 8) & 0b1) == 0b1)
-	{
-		return 1;
-	}
-	return 0;
-}
 
-void ctrl_LED()
-{
-	if (isPressed())
-	{
-		GPIOD->ODR |= (0b1 << 15);
-	}
-	else
-	{
-		GPIOD->ODR &= ~(0b1 << 15);
-	}
-}
 int main(void)
 {
 
@@ -115,12 +106,31 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  ctrl_LED();
+	  ctrl_LED(0);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
+char isPressed()
+{
+	if (((GPIOC->IDR >> 8) & 0b1) == 0b1)
+	{
+		return 1;
+	}
+	return 0;
+}
 
+void ctrl_LED(int state)
+{
+	if (state == 1)
+	{
+		GPIOD->ODR |= (0b1 << 15);
+	}
+	else
+	{
+		GPIOD->ODR &= ~(0b1 << 15);
+	}
+}
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -190,7 +200,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PC8 */
   GPIO_InitStruct.Pin = GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
