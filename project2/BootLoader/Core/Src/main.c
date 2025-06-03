@@ -76,6 +76,16 @@ void EXTI0_IRQHandler()
 	pf();
 }
 
+void myDelay()
+{
+	volatile int x = 0;
+	for (int i = 0; i < 1e6; i++) {
+		x++;
+	}
+
+	return;
+}
+
 int main()
 {
 	HAL_Init();
@@ -85,9 +95,9 @@ int main()
 	while (1)
 	{
 		LED_ctrl(ON);
-		HAL_Delay(1000);
+		myDelay();
 		LED_ctrl(OFF);
-		HAL_Delay(1000);
+		myDelay();
 	}
 
 	return 0;

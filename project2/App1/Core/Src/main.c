@@ -1,4 +1,5 @@
 #include "main.h"
+
 #define GPIOD_BASE_ADDR 0x40020C00
 #define GPIOA_BASE_ADDR 0x40020000
 #define EXTI_BASE_ADDR 0x40013C00
@@ -6,6 +7,7 @@
 typedef enum{
 	OFF, ON
 } LED_state;
+
 void LED_Init()
 {
 	__HAL_RCC_GPIOD_CLK_ENABLE();
@@ -63,27 +65,26 @@ void EXTI0_IRQHandler()
 	// Turn off Red LED before jump
 	LED_ctrl(OFF);
 
-	uint32_t* STCSR = (uint32_t*) 0xE000E010;
-	*STCSR = 0;
-
+	// Let ARM know that the vector table has been moved to 0x0800 8000 (beginning off App2 firmware)
 	uint32_t* VTOR = (uint32_t*) 0xE000ED08;
 	*VTOR = 0x08008000;
 
-	// Jump to Reset Handler function of App1
+	// Jump to Reset Handler function of App2
 	uint32_t* ptr = (uint32_t*) 0x08008004;
 	void (*pf)() = (void (*)()) *ptr;
 
 	pf();
 }
 
-void myDelay(volatile uint32_t cnt)
+void myDelay()
 {
-    while (cnt--) {
-        __NOP();
-    }
+	volatile int x = 0;
+	for (int i = 0; i < 1e6; i++) {
+		x++;
+	}
+
+	return;
 }
-
-
 
 int main()
 {
@@ -94,9 +95,9 @@ int main()
 	while (1)
 	{
 		LED_ctrl(ON);
-//		myDelay(2000);
-//		LED_ctrl(OFF);
-//		myDelay(2000);
+		myDelay();
+		LED_ctrl(OFF);
+		myDelay();
 	}
 
 	return 0;

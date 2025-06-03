@@ -68,11 +68,21 @@ void EXTI0_IRQHandler()
 	uint32_t* VTOR = (uint32_t*) 0xE000ED08;
 	*VTOR = 0x08000000;
 
-	// Jump to Reset Handler function of App1
+	// Jump to Reset Handler function of BootLoader
 	uint32_t* ptr = (uint32_t*) 0x08000004;
 	void (*pf)() = (void (*)()) *ptr;
 
 	pf();
+}
+
+void myDelay()
+{
+	volatile int x = 0;
+	for (int i = 0; i < 1e6; i++) {
+		x++;
+	}
+
+	return;
 }
 
 int main()
@@ -84,9 +94,9 @@ int main()
 	while (1)
 	{
 		LED_ctrl(ON);
-		HAL_Delay(1000);
+		myDelay();
 		LED_ctrl(OFF);
-		HAL_Delay(1000);
+		myDelay();
 	}
 
 	return 0;
