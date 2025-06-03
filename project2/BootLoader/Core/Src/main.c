@@ -8,30 +8,43 @@ typedef enum{
 	OFF, ON
 } LED_state;
 
-void LED_Init()
+void LED_Init();
+void LED_ctrl(LED_state state);
+void myDelay();
+void custom_Handler();
+void EXTI_Init();
+
+int main()
 {
-	__HAL_RCC_GPIOD_CLK_ENABLE();
-	// Declare GPIOD's MODER Register
-	uint32_t* GPIOD_MODER = (uint32_t*) (GPIOD_BASE_ADDR + 0x00);
-	// Clear pin PD15
-	*GPIOD_MODER &= ~(0b11 << 30);
-	// Set pin PD15 as OUTPUT
-	*GPIOD_MODER |= (0b01 << 30);
+	HAL_Init();
+	LED_Init();
+	EXTI_Init();
+
+	while (1)
+	{
+		LED_ctrl(ON);
+		myDelay();
+		LED_ctrl(OFF);
+		myDelay();
+	}
+
+	return 0;
 }
 
-void LED_ctrl(LED_state state)
+void custom_Handler()
 {
-	// Declare GPIOD's ODR Register
-	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE_ADDR + 0x14);
-	// Set output state for pin PD15
-	if (state == ON)
-	{
-		*GPIOD_ODR |= (0b1 << 15);
-	}
-	else if (state == OFF)
-	{
-		*GPIOD_ODR &= ~(0b1 << 15);
-	}
+	// Reset the PR Register to turn off the interrupt flag
+	uint32_t* EXTI_PR = (uint32_t*) (EXTI_BASE_ADDR + 0x14);
+	*EXTI_PR |= (0b1 << 0);
+
+	// Turn off Blue LED before jump
+	LED_ctrl(OFF);
+
+	// Jump to Reset Handler function of App1
+	uint32_t* ptr = (uint32_t*) 0x08004004;
+	void (*pf)() = (void (*)()) *ptr;
+
+	pf();
 }
 
 void EXTI_Init()
@@ -54,26 +67,14 @@ void EXTI_Init()
 	// Set the NVIC ISER0 at position 6 to HIGH
 	uint32_t* NVIC_ISER0 = (uint32_t*) 0xE000E100;
 	*NVIC_ISER0 |= (0b1 << 6);
-}
 
-void EXTI0_IRQHandler()
-{
-	// Reset the PR Register to turn off the interrupt flag
-	uint32_t* EXTI_PR = (uint32_t*) (EXTI_BASE_ADDR + 0x14);
-	*EXTI_PR |= (0b1 << 0);
+	memcpy(0x20000000, 0x08000000, 0x198);
 
-	// Turn off Blue LED before jump
-	LED_ctrl(OFF);
-
-	// Let ARM know that the vector table has been moved to 0x0800 4000 (beginning off App1 firmware)
 	uint32_t* VTOR = (uint32_t*) 0xE000ED08;
-	*VTOR = 0x08004000;
+	*VTOR = 0x20000000;
 
-	// Jump to Reset Handler function of App1
-	uint32_t* ptr = (uint32_t*) 0x08004004;
-	void (*pf)() = (void (*)()) *ptr;
-
-	pf();
+	uint32_t* fp = (uint32_t*) 0x20000058;
+	*fp = custom_Handler;
 }
 
 void myDelay()
@@ -86,19 +87,28 @@ void myDelay()
 	return;
 }
 
-int main()
+void LED_ctrl(LED_state state)
 {
-	HAL_Init();
-	LED_Init();
-	EXTI_Init();
-
-	while (1)
+	// Declare GPIOD's ODR Register
+	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE_ADDR + 0x14);
+	// Set output state for pin PD15
+	if (state == ON)
 	{
-		LED_ctrl(ON);
-		myDelay();
-		LED_ctrl(OFF);
-		myDelay();
+		*GPIOD_ODR |= (0b1 << 15);
 	}
+	else if (state == OFF)
+	{
+		*GPIOD_ODR &= ~(0b1 << 15);
+	}
+}
 
-	return 0;
+void LED_Init()
+{
+	__HAL_RCC_GPIOD_CLK_ENABLE();
+	// Declare GPIOD's MODER Register
+	uint32_t* GPIOD_MODER = (uint32_t*) (GPIOD_BASE_ADDR + 0x00);
+	// Clear pin PD15
+	*GPIOD_MODER &= ~(0b11 << 30);
+	// Set pin PD15 as OUTPUT
+	*GPIOD_MODER |= (0b01 << 30);
 }
