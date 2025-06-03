@@ -205,7 +205,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-
+  NVIC->ISER[0] |= (0b1 << 23);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
