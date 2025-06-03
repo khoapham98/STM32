@@ -26,7 +26,9 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum{
+	RED, BLUE
+} color;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -49,7 +51,7 @@
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 char isPressed();
-void ctrl_LED();
+void ctrl_LED(color _color, int state);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -58,12 +60,19 @@ void ctrl_LED();
 /* USER CODE BEGIN 0 */
 void EXTI9_5_IRQHandler()
 {
-	while (isPressed())
+	while(isPressed())
 	{
-		ctrl_LED(1);
+		if (((EXTI->PR >> 5) & 0b1) == 0b1)
+		{
+			ctrl_LED(RED, 1);
+			EXTI->PR |= (0b1 << 5);
+		}
+		else if (((EXTI->PR >> 8) & 0b1) == 0b1)
+		{
+			ctrl_LED(BLUE, 1);
+			EXTI->PR |= (0b1 << 8);
+		}
 	}
-
-	EXTI->PR |= (0b1 << 8);
 }
 /* USER CODE END 0 */
 
@@ -71,7 +80,6 @@ void EXTI9_5_IRQHandler()
   * @brief  The application entry point.
   * @retval int
   */
-
 int main(void)
 {
 
@@ -106,29 +114,31 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  ctrl_LED(0);
+	  ctrl_LED(RED, 0);
+	  ctrl_LED(BLUE, 0);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
+
 char isPressed()
 {
-	if (((GPIOC->IDR >> 8) & 0b1) == 0b1)
+	if (((GPIOC->IDR >> 8) & 0b1) == 0b1 || ((GPIOC->IDR >> 5) & 0b1) == 0b1)
 	{
 		return 1;
 	}
 	return 0;
 }
 
-void ctrl_LED(int state)
+void ctrl_LED(color _color, int state)
 {
 	if (state == 1)
 	{
-		GPIOD->ODR |= (0b1 << 15);
+		GPIOD->ODR |= (0b1 << (14 + _color));
 	}
 	else
 	{
-		GPIOD->ODR &= ~(0b1 << 15);
+		GPIOD->ODR &= ~(0b1 << (14 + _color));
 	}
 }
 /**
@@ -185,24 +195,24 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PD15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_15;
+  /*Configure GPIO pins : PC5 PC8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_8;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PD14 PD15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_14|GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PC8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
   NVIC->ISER[0] |= (0b1 << 23);
