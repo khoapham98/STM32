@@ -26,9 +26,11 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-typedef enum{
-	RED, BLUE
-} color;
+typedef enum
+{
+	SLOW = 1000,
+	FAST = 500
+} speed_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -42,7 +44,7 @@ typedef enum{
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-
+speed_t speed = SLOW;
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -50,29 +52,20 @@ typedef enum{
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-char isPressed();
-void ctrl_LED(color _color, int state);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void EXTI9_5_IRQHandler()
+void EXTI0_IRQHandler()
 {
-	while(isPressed())
-	{
-		if (((EXTI->PR >> 5) & 0b1) == 0b1)
-		{
-			ctrl_LED(RED, 1);
-			EXTI->PR |= (0b1 << 5);
-		}
-		else if (((EXTI->PR >> 8) & 0b1) == 0b1)
-		{
-			ctrl_LED(BLUE, 1);
-			EXTI->PR |= (0b1 << 8);
-		}
-	}
+	while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1);
+//	HAL_Delay(100);
+
+	speed = (speed == SLOW) ? FAST : SLOW;
+
+	EXTI->PR |= (0b1 << 0);
 }
 /* USER CODE END 0 */
 
@@ -114,33 +107,15 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  ctrl_LED(RED, 0);
-	  ctrl_LED(BLUE, 0);
+	  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_SET);
+	  HAL_Delay(speed);
+	  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
+	  HAL_Delay(speed);
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
 
-char isPressed()
-{
-	if (((GPIOC->IDR >> 8) & 0b1) == 0b1 || ((GPIOC->IDR >> 5) & 0b1) == 0b1)
-	{
-		return 1;
-	}
-	return 0;
-}
-
-void ctrl_LED(color _color, int state)
-{
-	if (state == 1)
-	{
-		GPIOD->ODR |= (0b1 << (14 + _color));
-	}
-	else
-	{
-		GPIOD->ODR &= ~(0b1 << (14 + _color));
-	}
-}
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -195,27 +170,27 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14|GPIO_PIN_15, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_15, GPIO_PIN_RESET);
 
-  /*Configure GPIO pins : PC5 PC8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_5|GPIO_PIN_8;
+  /*Configure GPIO pin : PA0 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PD14 PD15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_14|GPIO_PIN_15;
+  /*Configure GPIO pin : PD15 */
+  GPIO_InitStruct.Pin = GPIO_PIN_15;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-  NVIC->ISER[0] |= (0b1 << 23);
+  NVIC->ISER[0] |= (0b1 << 6);
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
