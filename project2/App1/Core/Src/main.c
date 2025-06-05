@@ -87,8 +87,7 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   /* USER CODE BEGIN 2 */
-  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
-  uint32_t* ptr;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -96,18 +95,12 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1)
-	  {
-		  while (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == 1);
-		  HAL_Delay(100);
-		  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-		  ptr = (uint32_t*) 0x08008004;
-		  break;
-	  }
+	  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+	  HAL_Delay(500);
+	  HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
+	  HAL_Delay(500);
     /* USER CODE BEGIN 3 */
   }
-  void (*fptr)() = (void (*)()) *ptr;
-  fptr();
   /* USER CODE END 3 */
 }
 
@@ -165,17 +158,10 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin : PA0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PD14 */
   GPIO_InitStruct.Pin = GPIO_PIN_14;
