@@ -4,9 +4,20 @@
 #define USART1_BASE_ADDR 0x40011000
 #define GPIOB_BASE_ADDR 0x40020400
 
+
 void USART_Init();
 void USART_send_char(char data);
 void USART_send_string(char* str);
+
+
+char str[20] = {0};
+int _index = 0;
+
+void USART1_IRQHandler()
+{
+	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
+	str[_index++] = *USART1_DR;
+}
 
 int main()
 {
@@ -15,12 +26,12 @@ int main()
 
 	while(1)
 	{
-		USART_send_string("khoa pham\n");
-		HAL_Delay(1000);
+
 	}
 
 	return 0;
 }
+
 
 void USART_send_char(char data)
 {
@@ -59,4 +70,8 @@ void USART_Init()
 	*USART1_CR1 |= (0b11 << 2); // enable transmitter & receiver
 	*USART1_CR1 |= (0b1 << 13); // enable USART1
 	*USART1_BRR = (104 << 4) | (3 << 0); // set baud rate at 9600bps
+	*USART1_CR1 |= (0b1 << 5); // generate interrupt
+
+	uint32_t* NVIC_ISER1 = (uint32_t*) 0xE000E104;
+	*NVIC_ISER1 |= (0b1 << 5);
 }
