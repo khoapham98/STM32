@@ -3,15 +3,46 @@
 
 #define USART1_BASE_ADDR 0x40011000
 #define GPIOB_BASE_ADDR 0x40020400
+#define GPIOD_BASE_ADDR 0x40020C00
 
+typedef enum{
+	GREEN, ORANGE, RED, BLUE
+} color_t;
+
+typedef enum{
+	OFF, ON
+} state_t;
+
+char str[20] = {0};
+int _index = 0;
 
 void USART_Init();
 void USART_send_char(char data);
 void USART_send_string(char* str);
+void LED_Init();
+void ctrl_LED(color_t color, state_t state);
+color_t get_color();
+state_t get_state();
+void clear_string();
+char is_done();
+void USART1_IRQHandler();
 
+int main()
+{
+	HAL_Init();
+	USART_Init();
+	LED_Init();
 
-char str[20] = {0};
-int _index = 0;
+	while(1)
+	{
+		if (is_done())
+		{
+			ctrl_LED(get_color(), get_state());
+			clear_string();
+		}
+	}
+	return 0;
+}
 
 void USART1_IRQHandler()
 {
@@ -19,19 +50,55 @@ void USART1_IRQHandler()
 	str[_index++] = *USART1_DR;
 }
 
-int main()
+color_t get_color()
 {
-	HAL_Init();
-	USART_Init();
+	if (strstr(str, "green") != NULL) { return GREEN;}
+	else if (strstr(str, "orange") != NULL) { return ORANGE; }
+	else if (strstr(str, "red") != NULL) { return RED; }
+	else {return BLUE;}
+}
 
-	while(1)
+state_t get_state()
+{
+	if (strstr(str, "on") != NULL) { return ON; }
+	else { return OFF; }
+}
+
+void clear_string()
+{
+	memset(str, 0, 20);
+	_index = 0;
+}
+
+char is_done()
+{
+	for (int i = 0; i < 20; i++)
 	{
-
+		if (str[i] == '\n') { return 1; }
 	}
-
 	return 0;
 }
 
+void ctrl_LED(color_t color, state_t state)
+{
+	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE_ADDR + 0x14);
+	 if (state == ON)
+	 {
+		 *GPIOD_ODR |= (0b1 << (12 + color));
+	 }
+	 else
+	 {
+		 *GPIOD_ODR &= ~(0b1 << (12 + color));
+	 }
+}
+
+void LED_Init()
+{
+	__HAL_RCC_GPIOD_CLK_ENABLE();
+	uint32_t* GPIOD_MODER = (uint32_t*) (GPIOD_BASE_ADDR + 0x00);
+	*GPIOD_MODER &= ~(0xff << 24);		// clear pin PD12, PD13, PD14, PD15
+	*GPIOD_MODER |= (0b01010101 << 24);	// set PD12, PD13, PD14, PD15 as OUTPUT
+}
 
 void USART_send_char(char data)
 {
