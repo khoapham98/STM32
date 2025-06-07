@@ -1,7 +1,44 @@
 #include "main.h"
+#include <string.h>
 
 #define USART1_BASE_ADDR 0x40011000
 #define GPIOB_BASE_ADDR 0x40020400
+
+void USART_Init();
+void USART_send_char(char data);
+void USART_send_string(char* str);
+
+int main()
+{
+	HAL_Init();
+	USART_Init();
+
+	while(1)
+	{
+		USART_send_string("khoa pham\n");
+		HAL_Delay(1000);
+	}
+
+	return 0;
+}
+
+void USART_send_char(char data)
+{
+	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
+	*USART1_DR = data;	// write data to DR register
+
+	uint32_t* USART1_SR = (uint32_t*) (USART1_BASE_ADDR + 0x00);
+	while (((*USART1_SR >> 7) & 1) == 0);	// wait until the data has been transferred
+}
+
+void USART_send_string(char* str)
+{
+	int size = strlen(str);
+	for (int i = 0; i < size; i++)
+	{
+		USART_send_char(str[i]);
+	}
+}
 
 void USART_Init()
 {
@@ -22,17 +59,4 @@ void USART_Init()
 	*USART1_CR1 |= (0b11 << 2); // enable transmitter & receiver
 	*USART1_CR1 |= (0b1 << 13); // enable USART1
 	*USART1_BRR = (104 << 4) | (3 << 0); // set baud rate at 9600bps
-}
-
-int main()
-{
-	HAL_Init();
-	USART_Init();
-
-	while(1)
-	{
-
-	}
-
-	return 0;
 }
