@@ -1,6 +1,7 @@
 #include "main.h"
 #include <string.h>
-
+#include <stdarg.h>
+#include <stdio.h>
 #define USART1_BASE_ADDR 0x40011000
 #define GPIOB_BASE_ADDR 0x40020400
 #define GPIOD_BASE_ADDR 0x40020C00
@@ -15,10 +16,12 @@ typedef enum{
 
 char str[20] = {0};
 int _index = 0;
+char* c[4] = { "Green", "Orange", "Red", "Blue" };
+char* s[2] = { "OFF", "ON" };
 
 void USART_Init();
 void USART_send_char(char data);
-void USART_send_string(char* str);
+void USART_send_string(char* str, ...);
 void LED_Init();
 void ctrl_LED(color_t color, state_t state);
 color_t get_color();
@@ -37,7 +40,10 @@ int main()
 	{
 		if (is_done())
 		{
-			ctrl_LED(get_color(), get_state());
+			color_t color = get_color();
+			state_t state = get_state();
+			ctrl_LED(color, state);
+			USART_send_string("%s led is %s\n", c[color], s[state]);
 			clear_string();
 		}
 	}
@@ -79,6 +85,29 @@ char is_done()
 	return 0;
 }
 
+void USART_send_char(char data)
+{
+	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
+	*USART1_DR = data;	// write data to DR register
+
+	uint32_t* USART1_SR = (uint32_t*) (USART1_BASE_ADDR + 0x00);
+	while (((*USART1_SR >> 7) & 1) == 0);	// wait until the data has been transferred
+}
+
+void USART_send_string(char* str, ...)
+{
+	va_list list;
+	va_start(list, str);
+	char print_buf[128] = {0};
+	vsprintf(print_buf, str, list);
+	int size = strlen(print_buf);
+	for (int i = 0; i < size; i++)
+	{
+		USART_send_char(print_buf[i]);
+	}
+	va_end(list);
+}
+
 void ctrl_LED(color_t color, state_t state)
 {
 	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE_ADDR + 0x14);
@@ -98,24 +127,6 @@ void LED_Init()
 	uint32_t* GPIOD_MODER = (uint32_t*) (GPIOD_BASE_ADDR + 0x00);
 	*GPIOD_MODER &= ~(0xff << 24);		// clear pin PD12, PD13, PD14, PD15
 	*GPIOD_MODER |= (0b01010101 << 24);	// set PD12, PD13, PD14, PD15 as OUTPUT
-}
-
-void USART_send_char(char data)
-{
-	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
-	*USART1_DR = data;	// write data to DR register
-
-	uint32_t* USART1_SR = (uint32_t*) (USART1_BASE_ADDR + 0x00);
-	while (((*USART1_SR >> 7) & 1) == 0);	// wait until the data has been transferred
-}
-
-void USART_send_string(char* str)
-{
-	int size = strlen(str);
-	for (int i = 0; i < size; i++)
-	{
-		USART_send_char(str[i]);
-	}
 }
 
 void USART_Init()
