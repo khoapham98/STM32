@@ -1,43 +1,117 @@
 #include "main.h"
 #include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 void UART_Init();
 void button_Init();
 char isPressed();
 void USART_send(uint8_t data);
-void USART_send_string(char* str);
+void USART_send_string(char* str, ...);
+void DHT11_Init();
+void request();
+void response();
+uint8_t receive_data();
 
+uint8_t c;
 int main()
 {
 	HAL_Init();
 	UART_Init();
 	button_Init();
-	int press = 0;
+	DHT11_Init();
+	char data[5];
 	while (1)
 	{
-		while (isPressed())
+		// gui xung start
+		request();
+		// doi xung phan hoi
+		response();
+		// doc 40 bit du lieu;
+		for (int i = 0; i < 5; i++)
 		{
-			USART_send_string("The button is being pressed!\n");
-			HAL_Delay(500);
-			press = 0;
+			data[i] = receive_data();
 		}
-		if (press == 0)
+		// kiem tra loi
+		if ((data[0] + data[1] + data[2] + data[3]) == data[4])
 		{
-			USART_send_string("Waiting");
-			press = 1;
+			USART_send_string("ERROR!\n");
 		}
-		USART_send('.');
+		else
+		{
+			uint16_t* read = &data[0];
+			USART_send_string("Humidity: %hu, ", *read);
+			read = &data[2];
+			USART_send_string("Temperature: %hu\n", *read);
+		}
 		HAL_Delay(1000);
 	}
 	return 0;
 }
 
-void USART_send_string(char* str)
+uint8_t receive_data()
 {
-	int size = strlen(str);
-	for (int i = 0; i < size; i++) {
-		USART_send(str[i]);
+	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
+	*GPIOA_MODER &= ~(0b11 << 18);	// set pin PA9 as INPUT
+
+	uint32_t* GPIOA_IDR = (uint32_t*) (GPIOA_BASE + 0x10);
+	for (int i = 0; i < 8; i++) {
+		while (((*GPIOA_IDR >> 9) & 1) == 0);
+		HAL_Delay(30);
+		if (((*GPIOA_IDR >> 9) & 1) == 1)
+		{
+			c = (c << 1) | 0x01;
+		}
+		else
+		{
+			c = c << 1;
+		}
+		while (((*GPIOA_IDR >> 9) & 1) == 1);
 	}
+	return c;
+}
+
+void response()
+{
+	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
+	*GPIOA_MODER &= ~(0b11 << 18);	// set pin PA9 as INPUT
+
+	uint32_t* GPIOA_IDR = (uint32_t*) (GPIOA_BASE + 0x10);
+	while (((*GPIOA_IDR >> 9) & 1) == 1);
+	while (((*GPIOA_IDR >> 9) & 1) == 0);
+	while (((*GPIOA_IDR >> 9) & 1) == 1);
+}
+
+void request()
+{
+	uint32_t* GPIOA_ODR = (uint32_t*) (GPIOA_BASE + 0x14);
+	*GPIOA_ODR |= (0b1 << 9);
+	*GPIOA_ODR &= ~(0b1 << 9);
+	HAL_Delay(20);
+	*GPIOA_ODR |= (0b1 << 9);
+
+}
+
+void DHT11_Init()
+{
+	__HAL_RCC_GPIOA_CLK_ENABLE();
+	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
+	*GPIOA_MODER &= ~(0b11 << 18);
+	*GPIOA_MODER |= (0b01 << 18);	// set pin PA9 as OUTPUT
+}
+
+void USART_send_string(char* str, ...)
+{
+	va_list list;
+	va_start(list, str);
+	char print_buf[128] = { 0 };
+	vsprintf(print_buf, str, list);
+	int len = strlen(print_buf);
+	for(int i = 0; i < len; i++)
+	{
+		USART_send(print_buf[i]);
+	}
+	va_end(list);
 }
 
 void USART_send(uint8_t data)
