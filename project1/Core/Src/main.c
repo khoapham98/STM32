@@ -11,94 +11,144 @@ void USART_send_string(char* str, ...);
 void DHT11_Init();
 void request();
 void response();
+void DWT_Init(void);
+void DWT_Delay_us(volatile uint32_t microseconds);
 uint8_t receive_data();
 
-uint8_t c;
 int main()
 {
 	HAL_Init();
 	UART_Init();
 	button_Init();
 	DHT11_Init();
-	char data[5];
+	DWT_Init();
+	uint8_t data[5] = {0};
+
 	while (1)
 	{
-		// gui xung start
+		// send start signal
 		request();
-		// doi xung phan hoi
+		// wait for response
 		response();
-		// doc 40 bit du lieu;
+		// read data
 		for (int i = 0; i < 5; i++)
 		{
 			data[i] = receive_data();
 		}
-		// kiem tra loi
-		if ((data[0] + data[1] + data[2] + data[3]) == data[4])
+		// check sum
+		if ((data[0] + data[1] + data[2] + data[3]) != data[4])
 		{
 			USART_send_string("ERROR!\n");
 		}
 		else
 		{
-			uint16_t* read = &data[0];
-			USART_send_string("Humidity: %hu, ", *read);
-			read = &data[2];
-			USART_send_string("Temperature: %hu\n", *read);
+			USART_send_string("Humidity: %u,%u, ", data[0], data[1]);
+			USART_send_string("Temperature: %u,%u\n", data[2],data[3]);
 		}
-		HAL_Delay(1000);
+		HAL_Delay(2000);
 	}
 	return 0;
 }
 
 uint8_t receive_data()
 {
-	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
-	*GPIOA_MODER &= ~(0b11 << 18);	// set pin PA9 as INPUT
-
+	uint8_t byte = 0;
 	uint32_t* GPIOA_IDR = (uint32_t*) (GPIOA_BASE + 0x10);
-	for (int i = 0; i < 8; i++) {
-		while (((*GPIOA_IDR >> 9) & 1) == 0);
-		HAL_Delay(30);
+	for (int i = 0; i < 8; i++)
+	{
+		uint32_t timeout = 100;
+		while (((*GPIOA_IDR >> 9) & 1) == 1 && timeout--)
+		{
+//			DWT_Delay_us(1);
+		}
+		if (timeout == 0) {return 0xff;}
+
+
+		timeout = 100;
+		while (((*GPIOA_IDR >> 9) & 1) == 0 && timeout--)
+		{
+//			DWT_Delay_us(1);
+		}
+		if (timeout == 0) {return 0xff;}
+
+		DWT_Delay_us(35);
 		if (((*GPIOA_IDR >> 9) & 1) == 1)
 		{
-			c = (c << 1) | 0x01;
+			byte = (byte << 1) | 0x01;
 		}
 		else
 		{
-			c = c << 1;
+			byte = byte << 1;
 		}
-		while (((*GPIOA_IDR >> 9) & 1) == 1);
+
+		timeout = 100;
+		while (((*GPIOA_IDR >> 9) & 1) == 1 && timeout--)
+		{
+			DWT_Delay_us(1);
+		}
+		if (timeout == 0) {return 0xff;}
 	}
-	return c;
+	return byte;
 }
 
 void response()
 {
-	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
-	*GPIOA_MODER &= ~(0b11 << 18);	// set pin PA9 as INPUT
-
 	uint32_t* GPIOA_IDR = (uint32_t*) (GPIOA_BASE + 0x10);
-	while (((*GPIOA_IDR >> 9) & 1) == 1);
-	while (((*GPIOA_IDR >> 9) & 1) == 0);
-	while (((*GPIOA_IDR >> 9) & 1) == 1);
+	uint32_t timeout = 1000;
+	while (((*GPIOA_IDR >> 9) & 1) == 1 && timeout--) { DWT_Delay_us(1); }
+	if (timeout == 0)
+	{
+		USART_send_string("DHT11 not response!\n");
+		return;
+	}
+
+	timeout = 1000;
+	while (((*GPIOA_IDR >> 9) & 1) == 0 && timeout--) { DWT_Delay_us(1); }
+	if (timeout == 0)
+	{
+		USART_send_string("DHT11 not response!\n");
+		return;
+	}
 }
 
 void request()
 {
-	uint32_t* GPIOA_ODR = (uint32_t*) (GPIOA_BASE + 0x14);
-	*GPIOA_ODR |= (0b1 << 9);
-	*GPIOA_ODR &= ~(0b1 << 9);
-	HAL_Delay(20);
-	*GPIOA_ODR |= (0b1 << 9);
+	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
+	*GPIOA_MODER &= ~(0b11 << 18);
+	*GPIOA_MODER |= (0b01 << 18);	// set pin PA9 as OUTPUT
 
+	uint32_t* GPIOA_ODR = (uint32_t*) (GPIOA_BASE + 0x14);
+
+	// set PA9 to LOW
+	*GPIOA_ODR &= ~(1 << 9);
+	HAL_Delay(20);
+
+	// set PA9 to HIGH
+	*GPIOA_ODR |= (1 << 9);
+	DWT_Delay_us(30);
+
+	*GPIOA_MODER &= ~(0b11 << 18);	// set pin PA9 as INPUT
 }
 
 void DHT11_Init()
 {
 	__HAL_RCC_GPIOA_CLK_ENABLE();
-	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
-	*GPIOA_MODER &= ~(0b11 << 18);
-	*GPIOA_MODER |= (0b01 << 18);	// set pin PA9 as OUTPUT
 }
+
+void DWT_Init(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; // Bật Trace
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk; // Enable DWT
+}
+
+void DWT_Delay_us(volatile uint32_t microseconds)
+{
+    uint32_t clk_cycle_start = DWT->CYCCNT;
+    microseconds *= (SystemCoreClock / 1000000);
+    while ((DWT->CYCCNT - clk_cycle_start) < microseconds);
+}
+
 
 void USART_send_string(char* str, ...)
 {
