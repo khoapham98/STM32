@@ -2,206 +2,175 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
+#define USART1_BASE_ADDR 0x40011000
+#define GPIOB_BASE_ADDR 0x40020400
+#define GPIOD_BASE_ADDR 0x40020C00
+#define DMA2_BASE_ADDR 0x40026400
 
-void UART_Init();
-void button_Init();
-char isPressed();
-void USART_send(uint8_t data);
+typedef enum{
+	GREEN, ORANGE, RED, BLUE
+} color_t;
+
+typedef enum{
+	OFF, ON
+} state_t;
+
+char str[20] = {0};
+int _index = 0;
+char* c[4] = { "Green", "Orange", "Red", "Blue" };
+char* s[2] = { "OFF", "ON" };
+
+void USART_Init();
+void USART_send_char(char data);
 void USART_send_string(char* str, ...);
-void DHT11_Init();
-void request();
-void response();
-void DWT_Init(void);
-void DWT_Delay_us(volatile uint32_t microseconds);
-uint8_t receive_data();
+void LED_Init();
+void ctrl_LED(color_t color, state_t state);
+color_t get_color();
+state_t get_state();
+void clear_string();
+char is_done();
+void USART1_IRQHandler();
+void DMA2_Init();
 
 int main()
 {
 	HAL_Init();
-	UART_Init();
-	button_Init();
-	DHT11_Init();
-	DWT_Init();
-	uint8_t data[5] = {0};
+	USART_Init();
+	LED_Init();
+	DMA2_Init();
 
-	while (1)
+	while(1)
 	{
-		// send start signal
-		request();
-		// wait for response
-		response();
-		// read data
-		for (int i = 0; i < 5; i++)
-		{
-			data[i] = receive_data();
-		}
-		// check sum
-		if ((data[0] + data[1] + data[2] + data[3]) != data[4])
-		{
-			USART_send_string("ERROR!\n");
-		}
-		else
-		{
-			USART_send_string("Humidity: %u,%u, ", data[0], data[1]);
-			USART_send_string("Temperature: %u,%u\n", data[2],data[3]);
-		}
-		HAL_Delay(2000);
+		ctrl_LED(BLUE, ON);
+		HAL_Delay(500);
+		ctrl_LED(BLUE, OFF);
+		HAL_Delay(500);
 	}
 	return 0;
 }
 
-uint8_t receive_data()
+void DMA2_Init()
 {
-	uint8_t byte = 0;
-	uint32_t* GPIOA_IDR = (uint32_t*) (GPIOA_BASE + 0x10);
-	for (int i = 0; i < 8; i++)
+	__HAL_RCC_DMA2_CLK_ENABLE();
+	uint32_t* DMA2_S2PAR = (uint32_t*) (DMA2_BASE_ADDR + (0x18 + 0x18 * 2));
+	*DMA2_S2PAR = (USART1_BASE_ADDR + 0x04);	// set USART1_DR register as Source
+
+	uint32_t* DMA2_S2M0AR = (uint32_t*) (DMA2_BASE_ADDR + (0x1C + 0x18 * 2));
+	*DMA2_S2M0AR = (uint32_t) str;		// set str address as Destination
+
+	uint32_t* DMA_S2NDTR = (uint32_t*) (DMA2_BASE_ADDR + (0x14 + 0x18 * 2));
+	*DMA_S2NDTR = sizeof(str);	// set number of bytes to transfer
+
+	uint32_t* DMA_S2CR = (uint32_t*) (DMA2_BASE_ADDR + (0x10 + 0x18 * 2));
+	*DMA_S2CR |= (0b100 << 25);	// select channel 4
+	*DMA_S2CR |= (1 << 10);	// enable memory increment mode
+	*DMA_S2CR |= (1 << 8);	// enable circular mode
+	*DMA_S2CR |= (1 << 0);	// enable Stream ---	** ENABLE THE PERIPHERAL IS ALWAYS THE LAST STEP **
+}
+
+void USART1_IRQHandler()
+{
+	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
+	str[_index++] = *USART1_DR;
+}
+
+color_t get_color()
+{
+	if (strstr(str, "green") != NULL) { return GREEN;}
+	else if (strstr(str, "orange") != NULL) { return ORANGE; }
+	else if (strstr(str, "red") != NULL) { return RED; }
+	else {return BLUE;}
+}
+
+state_t get_state()
+{
+	if (strstr(str, "on") != NULL) { return ON; }
+	else { return OFF; }
+}
+
+void clear_string()
+{
+	memset(str, 0, 20);
+	_index = 0;
+}
+
+char is_done()
+{
+	for (int i = 0; i < 20; i++)
 	{
-		uint32_t timeout = 100;
-		while (((*GPIOA_IDR >> 9) & 1) == 1 && timeout--)
-		{
-//			DWT_Delay_us(1);
-		}
-		if (timeout == 0) {return 0xff;}
-
-
-		timeout = 100;
-		while (((*GPIOA_IDR >> 9) & 1) == 0 && timeout--)
-		{
-//			DWT_Delay_us(1);
-		}
-		if (timeout == 0) {return 0xff;}
-
-		DWT_Delay_us(35);
-		if (((*GPIOA_IDR >> 9) & 1) == 1)
-		{
-			byte = (byte << 1) | 0x01;
-		}
-		else
-		{
-			byte = byte << 1;
-		}
-
-		timeout = 100;
-		while (((*GPIOA_IDR >> 9) & 1) == 1 && timeout--)
-		{
-			DWT_Delay_us(1);
-		}
-		if (timeout == 0) {return 0xff;}
+		if (str[i] == '\n') { return 1; }
 	}
-	return byte;
+	return 0;
 }
 
-void response()
+void USART_send_char(char data)
 {
-	uint32_t* GPIOA_IDR = (uint32_t*) (GPIOA_BASE + 0x10);
-	uint32_t timeout = 1000;
-	while (((*GPIOA_IDR >> 9) & 1) == 1 && timeout--) { DWT_Delay_us(1); }
-	if (timeout == 0)
-	{
-		USART_send_string("DHT11 not response!\n");
-		return;
-	}
+	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
+	*USART1_DR = data;	// write data to DR register
 
-	timeout = 1000;
-	while (((*GPIOA_IDR >> 9) & 1) == 0 && timeout--) { DWT_Delay_us(1); }
-	if (timeout == 0)
-	{
-		USART_send_string("DHT11 not response!\n");
-		return;
-	}
+	uint32_t* USART1_SR = (uint32_t*) (USART1_BASE_ADDR + 0x00);
+	while (((*USART1_SR >> 7) & 1) == 0);	// wait until the data has been transferred
 }
-
-void request()
-{
-	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
-	*GPIOA_MODER &= ~(0b11 << 18);
-	*GPIOA_MODER |= (0b01 << 18);	// set pin PA9 as OUTPUT
-
-	uint32_t* GPIOA_ODR = (uint32_t*) (GPIOA_BASE + 0x14);
-
-	// set PA9 to LOW
-	*GPIOA_ODR &= ~(1 << 9);
-	HAL_Delay(20);
-
-	// set PA9 to HIGH
-	*GPIOA_ODR |= (1 << 9);
-	DWT_Delay_us(30);
-
-	*GPIOA_MODER &= ~(0b11 << 18);	// set pin PA9 as INPUT
-}
-
-void DHT11_Init()
-{
-	__HAL_RCC_GPIOA_CLK_ENABLE();
-}
-
-void DWT_Init(void)
-{
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk; // Bật Trace
-    DWT->CYCCNT = 0;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk; // Enable DWT
-}
-
-void DWT_Delay_us(volatile uint32_t microseconds)
-{
-    uint32_t clk_cycle_start = DWT->CYCCNT;
-    microseconds *= (SystemCoreClock / 1000000);
-    while ((DWT->CYCCNT - clk_cycle_start) < microseconds);
-}
-
 
 void USART_send_string(char* str, ...)
 {
 	va_list list;
 	va_start(list, str);
-	char print_buf[128] = { 0 };
+	char print_buf[128] = {0};
 	vsprintf(print_buf, str, list);
-	int len = strlen(print_buf);
-	for(int i = 0; i < len; i++)
+	int size = strlen(print_buf);
+	for (int i = 0; i < size; i++)
 	{
-		USART_send(print_buf[i]);
+		USART_send_char(print_buf[i]);
 	}
 	va_end(list);
 }
 
-void USART_send(uint8_t data)
+void ctrl_LED(color_t color, state_t state)
 {
-	uint32_t* USART6_DR = (uint32_t*) (USART6_BASE + 0x04);
-	uint32_t* USART6_SR = (uint32_t*) (USART6_BASE + 0x00);
-	*USART6_DR = data;
-	while (((*USART6_SR >> 7) & 1) == 0);
+	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE_ADDR + 0x14);
+	 if (state == ON)
+	 {
+		 *GPIOD_ODR |= (0b1 << (12 + color));
+	 }
+	 else
+	 {
+		 *GPIOD_ODR &= ~(0b1 << (12 + color));
+	 }
 }
 
-char isPressed()
+void LED_Init()
 {
-	uint32_t* GPIOA_IDR = (uint32_t*) (GPIOA_BASE + 0x10);
-	if ((*GPIOA_IDR & 1) == 1) { return 1;}
-	return 0;
+	__HAL_RCC_GPIOD_CLK_ENABLE();
+	uint32_t* GPIOD_MODER = (uint32_t*) (GPIOD_BASE_ADDR + 0x00);
+	*GPIOD_MODER &= ~(0xff << 24);		// clear pin PD12, PD13, PD14, PD15
+	*GPIOD_MODER |= (0b01010101 << 24);	// set PD12, PD13, PD14, PD15 as OUTPUT
 }
 
-void button_Init()
+void USART_Init()
 {
-	__HAL_RCC_GPIOA_CLK_ENABLE();
-	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE + 0x00);
-	*GPIOA_MODER &= ~(0b11 << 0);
-}
+	__HAL_RCC_GPIOB_CLK_ENABLE();
+	uint32_t* GPIOB_MODER = (uint32_t*) (GPIOB_BASE_ADDR + 0x00);
+	uint32_t* GPIOB_AFRL = (uint32_t*) (GPIOB_BASE_ADDR + 0x20);
+	*GPIOB_MODER &= ~(0b1111 << 12);// clear bit pin PB6 and PB7
+	*GPIOB_MODER |= (0b1010 << 12);	// set PB6 and PB7 in AF mode
+	*GPIOB_AFRL &= ~(0xff << 24);	// clear bit pin AFRL6 and AFRL7
+	*GPIOB_AFRL |= (0b0111 << 24) | (0b0111 << 28); // select AF7 for AFRL6 and AFRL7
 
-void UART_Init()
-{
-	__HAL_RCC_GPIOC_CLK_ENABLE();
-	uint32_t* GPIOC_MODER = (uint32_t*) (GPIOC_BASE + 0x00);
-	uint32_t* GPIOC_AFRL = (uint32_t*) (GPIOC_BASE + 0x20);
-	*GPIOC_MODER &= ~(0b1111 << 12);
-	*GPIOC_MODER |= (0b1010 << 12);
-	*GPIOC_AFRL &= ~(0xff << 24);
-	*GPIOC_AFRL = (0b1000 << 24) | (0b1000 << 28);
+	__HAL_RCC_USART1_CLK_ENABLE();
+	uint32_t* USART1_CR1 = (uint32_t*) (USART1_BASE_ADDR + 0x0C);
+	uint32_t* USART1_BRR = (uint32_t*) (USART1_BASE_ADDR + 0x08);
+	*USART1_CR1 |= (0b1 << 12);	// set word length
+	*USART1_CR1 |= (0b1 << 10); // enable parity bit
+	*USART1_CR1 &= ~(0b1 << 9); // select Even parity
+	*USART1_CR1 |= (0b11 << 2); // enable transmitter & receiver
+	*USART1_CR1 |= (0b1 << 13); // enable USART1
+	*USART1_BRR = (104 << 4) | (3 << 0); // set baud rate at 9600bps
 
-	__HAL_RCC_USART6_CLK_ENABLE();
-	uint32_t* USART6_CR1 = (uint32_t*) (USART6_BASE + 0x0C);
-	uint32_t* USART6_BRR = (uint32_t*) (USART6_BASE + 0x08);
-	*USART6_CR1 &= ~(0b1 << 12); // set word length = 8 data bits
-	*USART6_CR1 &= ~(0b1 << 10); // disable parity control
-	*USART6_CR1 |= (0b11 << 2);  // enable transmitter and receiver
-	*USART6_BRR = (104 << 4) | (3 << 0); // set baud rate = 9600bps
-	*USART6_CR1 |= (0b1 << 13);  // enable USART
+	uint32_t* USART1_CR3 = (uint32_t*) (USART1_BASE_ADDR + 0x14);
+	*USART1_CR3 |= (1 << 6);	// enable DMA receiver
+
+//	*USART1_CR1 |= (0b1 << 5); 	// generate interrupt
+//	uint32_t* NVIC_ISER1 = (uint32_t*) 0xE000E104;
+//	*NVIC_ISER1 |= (0b1 << 5);	// accept Interrupt signal from EXTI
 }
