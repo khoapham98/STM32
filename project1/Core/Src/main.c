@@ -31,6 +31,7 @@ void clear_string();
 char is_done();
 void USART1_IRQHandler();
 void DMA2_Init();
+void DMA2_Stream2_IRQHandler();
 
 int main()
 {
@@ -41,10 +42,7 @@ int main()
 
 	while(1)
 	{
-		ctrl_LED(BLUE, ON);
-		HAL_Delay(500);
-		ctrl_LED(BLUE, OFF);
-		HAL_Delay(500);
+
 	}
 	return 0;
 }
@@ -65,7 +63,22 @@ void DMA2_Init()
 	*DMA_S2CR |= (0b100 << 25);	// select channel 4
 	*DMA_S2CR |= (1 << 10);	// enable memory increment mode
 	*DMA_S2CR |= (1 << 8);	// enable circular mode
-	*DMA_S2CR |= (1 << 0);	// enable Stream ---	** ENABLE THE PERIPHERAL IS ALWAYS THE LAST STEP **
+	*DMA_S2CR |= (1 << 4); 	// enable transfer complete interrupt
+	*DMA_S2CR |= (1 << 0);	// enable Stream --- ** ENABLE THE PERIPHERAL IS ALWAYS THE LAST STEP **
+
+	uint32_t* NVIC_ISER1 = (uint32_t*) 0xE000E104;
+	*NVIC_ISER1 |= (1 << 26);	// accept interrupt signal from DMA2
+}
+
+state_t tt = OFF;
+void DMA2_Stream2_IRQHandler()
+{
+	tt = (tt == OFF) ? ON : OFF;
+	ctrl_LED(BLUE, tt);
+	USART_send_string("Blue LED is %s\n", s[tt]);
+
+	uint32_t* DMA2_LIFCR = (uint32_t*) (DMA2_BASE_ADDR + 0x08);
+	*DMA2_LIFCR |= (1 << 21);	// clear transfer complete interrupt flag
 }
 
 void USART1_IRQHandler()
@@ -172,5 +185,5 @@ void USART_Init()
 
 //	*USART1_CR1 |= (0b1 << 5); 	// generate interrupt
 //	uint32_t* NVIC_ISER1 = (uint32_t*) 0xE000E104;
-//	*NVIC_ISER1 |= (0b1 << 5);	// accept Interrupt signal from EXTI
+//	*NVIC_ISER1 |= (0b1 << 5);	// accept Interrupt signal from UART
 }
