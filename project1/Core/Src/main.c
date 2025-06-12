@@ -15,15 +15,15 @@ typedef enum{
 	OFF, ON
 } state_t;
 
-char str[20] = {0};
+char str[10] = {0};
 int _index = 0;
 char* c[4] = { "Green", "Orange", "Red", "Blue" };
 char* s[2] = { "OFF", "ON" };
 
-void USART_Init();
+void USART1_Init();
 void USART_send_char(char data);
 void USART_send_string(char* str, ...);
-void LED_Init();
+void LEDs_Init();
 void ctrl_LED(color_t color, state_t state);
 color_t get_color();
 state_t get_state();
@@ -36,8 +36,8 @@ void DMA2_Stream2_IRQHandler();
 int main()
 {
 	HAL_Init();
-	USART_Init();
-	LED_Init();
+	USART1_Init();
+	LEDs_Init();
 	DMA2_Init();
 
 	while(1)
@@ -70,15 +70,16 @@ void DMA2_Init()
 	*NVIC_ISER1 |= (1 << 26);	// accept interrupt signal from DMA2
 }
 
-state_t tt = OFF;
 void DMA2_Stream2_IRQHandler()
 {
-	tt = (tt == OFF) ? ON : OFF;
-	ctrl_LED(BLUE, tt);
-	USART_send_string("Blue LED is %s\n", s[tt]);
-
-	uint32_t* DMA2_LIFCR = (uint32_t*) (DMA2_BASE_ADDR + 0x08);
-	*DMA2_LIFCR |= (1 << 21);	// clear transfer complete interrupt flag
+	if (!memcmp("HELLO12345", str, sizeof(str)))
+	{
+		ctrl_LED(GREEN, ON);
+	}
+	else
+	{
+		ctrl_LED(GREEN, OFF);
+	}
 }
 
 void USART1_IRQHandler()
@@ -101,11 +102,11 @@ state_t get_state()
 	else { return OFF; }
 }
 
-void clear_string()
-{
-	memset(str, 0, 20);
-	_index = 0;
-}
+//void clear_string()
+//{
+//	memset(str, 0, 20);
+//	_index = 0;
+//}
 
 char is_done()
 {
@@ -152,7 +153,7 @@ void ctrl_LED(color_t color, state_t state)
 	 }
 }
 
-void LED_Init()
+void LEDs_Init()
 {
 	__HAL_RCC_GPIOD_CLK_ENABLE();
 	uint32_t* GPIOD_MODER = (uint32_t*) (GPIOD_BASE_ADDR + 0x00);
@@ -160,7 +161,7 @@ void LED_Init()
 	*GPIOD_MODER |= (0b01010101 << 24);	// set PD12, PD13, PD14, PD15 as OUTPUT
 }
 
-void USART_Init()
+void USART1_Init()
 {
 	__HAL_RCC_GPIOB_CLK_ENABLE();
 	uint32_t* GPIOB_MODER = (uint32_t*) (GPIOB_BASE_ADDR + 0x00);
