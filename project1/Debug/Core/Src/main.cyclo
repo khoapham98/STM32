@@ -1,4 +1,8 @@
-../Core/Src/main.c:7:5:main	1
-../Core/Src/main.c:18:6:unlock_flash_CR	2
-../Core/Src/main.c:30:6:flash_erase_sector	4
-../Core/Src/main.c:45:6:flash_program	3
+../Core/Src/main.c:17:5:main	1
+../Core/Src/main.c:33:10:cal_distance	1
+../Core/Src/main.c:40:10:cal_time	3
+../Core/Src/main.c:51:6:trig_HCSR04	1
+../Core/Src/main.c:59:6:delay_us	2
+../Core/Src/main.c:66:6:delay_ms	2
+../Core/Src/main.c:74:6:TIM2_Init	1
+../Core/Src/main.c:89:6:HCSR04_Init	1
