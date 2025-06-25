@@ -142,6 +142,7 @@ SECTIONS
     *(.data*)          /* .data* sections */
     *(.RamFunc)        /* .RamFunc sections */
     *(.RamFunc*)       /* .RamFunc* sections */
+	*(.ham_tren_RAM)
 
     . = ALIGN(4);
     _edata = .;        /* define a global symbol at data end */

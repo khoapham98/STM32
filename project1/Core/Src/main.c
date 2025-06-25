@@ -3,138 +3,247 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#define GPIOC_BASE_ADDR 0x40020800
+#define USART1_BASE_ADDR 0x40011000
+#define GPIOB_BASE_ADDR 0x40020400
 #define GPIOD_BASE_ADDR 0x40020C00
-#define TIM2_BASE_ADDR 0x40000000
-#define USART2_BASE_ADDR 0x40004400
+#define DMA2_BASE_ADDR 0x40026400
+#define FLASH_R_BASE_ADDR 0x40023C00
 
-void HCSR04_Init();
-void USART2_Init();
-void TIM2_Init();
-void delay_us(uint32_t us);
-void delay_ms(uint32_t ms);
-void trig_HCSR04();
-void cal_distance();
-void UART_send_char(char data);
-void UART_send_string(char* str, ...);
+typedef enum{
+	GREEN, ORANGE, RED, BLUE
+} color_t;
 
-uint32_t distance = 0;
+typedef enum{
+	OFF, ON
+} state_t;
+
+char rx_buf[5496] = {0};
+int _index = 0;
+char* c[4] = { "Green", "Orange", "Red", "Blue" };
+char* s[2] = { "OFF", "ON" };
+char recv_new_fw_complete = 0;
+
+void USART1_Init();
+void USART_send_char(char data);
+void USART_send_string(char* str, ...);
+void LEDs_Init();
+void ctrl_LED(color_t color, state_t state);
+color_t get_color();
+state_t get_state();
+char is_done();
+void USART1_IRQHandler();
+void DMA2_Init();
+void DMA2_Stream2_IRQHandler();
+void flash_erase_sector(int sec_num);
+void flash_program(uint8_t* addr, uint8_t val);
+void unlock_flash_CR();
+void update();
 
 int main()
 {
 	HAL_Init();
-	HCSR04_Init();
-	TIM2_Init();
-	USART2_Init();
-	while (1)
+	USART1_Init();
+	LEDs_Init();
+	DMA2_Init();
+	USART_send_string("Day la firmware version 0.0\n");
+	while(1)
 	{
-		trig_HCSR04();
-		cal_distance();
-		UART_send_string("distance = %u cm\n", distance);
-		delay_ms(1000);
+		ctrl_LED(BLUE, ON);
+		HAL_Delay(1000);
+		ctrl_LED(BLUE, OFF);
+		HAL_Delay(1000);
+
 	}
 	return 0;
 }
 
-void cal_distance()
+__attribute__((section(".ham_tren_RAM"))) void update()
 {
-	volatile uint32_t* GPIOC_IDR = (uint32_t*) (GPIOC_BASE_ADDR + 0x10);
-	while (((*GPIOC_IDR >> 6) & 1) == 0);	// wait until ECHO is HIGH
-
-	volatile uint32_t* TIM2_CNT = (uint32_t*) (TIM2_BASE_ADDR + 0x24);
-	*TIM2_CNT = 0;	// set counter counting back from 0
-	while (((*GPIOC_IDR >> 6) & 1) == 1);	// Keep counting until ECHO is LOW
-	uint32_t time = *TIM2_CNT;	// save the time
-	distance = time / 58;	// use equation 3 in datasheet to calculate distance
+	if (recv_new_fw_complete == 1)
+	{
+		__asm("CPSID i");
+		flash_erase_sector(0);
+		for (int i = 0; i < sizeof(rx_buf); i++)
+		{
+			flash_program(0x08000000 + i, rx_buf[i]);
+		}
+	}
 }
 
-void trig_HCSR04()
+__attribute__((section(".ham_tren_RAM"))) void unlock_flash_CR()
 {
-	uint32_t* GPIOC_ODR = (uint32_t*) (GPIOC_BASE_ADDR + 0x14);
-	*GPIOC_ODR |= (1 << 7);		// set TRIG to HIGH
-	delay_us(11);
-	*GPIOC_ODR &= ~(1 << 7);	// clear TRIG to LOW
+	uint32_t* FLASH_CR = (uint32_t*) (FLASH_R_BASE_ADDR + 0x10);
+	uint32_t* FLASH_KEYR = (uint32_t*) (FLASH_R_BASE_ADDR + 0x04);
+
+	if (((*FLASH_CR >> 31) & 1) == 1)
+	{
+		*FLASH_KEYR = 0x45670123;	// unlock the FLASH CR
+		*FLASH_KEYR = 0xCDEF89AB;
+	}
 }
 
-void delay_us(uint32_t us)
+__attribute__((section(".ham_tren_RAM"))) void flash_erase_sector(int sec_num)
 {
-	uint32_t* TIM2_CNT = (uint32_t*) (TIM2_BASE_ADDR + 0x24);
-	*TIM2_CNT = 0;
-	while (*TIM2_CNT < us);
+	if (sec_num > 7) { return; }
+	unlock_flash_CR();
+
+	uint32_t* FLASH_SR = (uint32_t*) (FLASH_R_BASE_ADDR + 0x0C);
+	while (((*FLASH_SR >> 16) & 1) == 1);	// check the BSY bit
+
+	uint32_t* FLASH_CR = (uint32_t*) (FLASH_R_BASE_ADDR + 0x10);
+	*FLASH_CR |= (1 << 1);	// set the SER bit
+	*FLASH_CR |= (sec_num << 3);	// select the section as sec_num
+	*FLASH_CR |= (1 << 16);	// set the STRT bit
+	while (((*FLASH_SR >> 16) & 1) == 1);	// wait for BSY bit to be cleared
 }
 
-void delay_ms(uint32_t ms)
+__attribute__((section(".ham_tren_RAM"))) void flash_program(uint8_t* addr, uint8_t val)
 {
-	uint32_t* TIM2_CNT = (uint32_t*) (TIM2_BASE_ADDR + 0x24);
-	*TIM2_CNT = 0;
-	while (*TIM2_CNT < (ms * 1000));
+	unlock_flash_CR();
+
+	uint32_t* FLASH_SR = (uint32_t*) (FLASH_R_BASE_ADDR + 0x0C);
+	while (((*FLASH_SR >> 16) & 1) == 1);	// check the BSY bit
+
+	uint32_t* FLASH_CR = (uint32_t*) (FLASH_R_BASE_ADDR + 0x10);
+	*FLASH_CR |= (1 << 0);	// set the PG bit
+	*addr = val;
+	while (((*FLASH_SR >> 16) & 1) == 1);	// wait for BSY bit to be cleared
 }
 
-void UART_send_string(char* str, ...)
+
+void DMA2_Stream2_IRQHandler()
+{
+	uint32_t* DMA2_LIFCR = (uint32_t*) (DMA2_BASE_ADDR + 0x08);
+	*DMA2_LIFCR |= (1 << 21);	// clear transfer complete interrupt flag
+	recv_new_fw_complete = 1;
+}
+
+void USART1_IRQHandler()
+{
+	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
+	rx_buf[_index++] = *USART1_DR;
+}
+
+color_t get_color()
+{
+	if (strstr(rx_buf, "green") != NULL) { return GREEN;}
+	else if (strstr(rx_buf, "orange") != NULL) { return ORANGE; }
+	else if (strstr(rx_buf, "red") != NULL) { return RED; }
+	else {return BLUE;}
+}
+
+state_t get_state()
+{
+	if (strstr(rx_buf, "on") != NULL) { return ON; }
+	else { return OFF; }
+}
+
+char is_done()
+{
+	for (int i = 0; i < 20; i++)
+	{
+		if (rx_buf[i] == '\n') { return 1; }
+	}
+	return 0;
+}
+
+void USART_send_char(char data)
+{
+	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
+	*USART1_DR = data;	// write data to DR register
+
+	uint32_t* USART1_SR = (uint32_t*) (USART1_BASE_ADDR + 0x00);
+	while (((*USART1_SR >> 7) & 1) == 0);	// wait until the data has been transferred
+}
+
+void USART_send_string(char* str, ...)
 {
 	va_list list;
 	va_start(list, str);
-	char print_buf[128] = { 0 };
+	char print_buf[128] = {0};
 	vsprintf(print_buf, str, list);
 	int size = strlen(print_buf);
 	for (int i = 0; i < size; i++)
 	{
-		UART_send_char(print_buf[i]);
+		USART_send_char(print_buf[i]);
 	}
 	va_end(list);
 }
 
-void UART_send_char(char data)
+void ctrl_LED(color_t color, state_t state)
 {
-	uint32_t* USART2_DR = (uint32_t*) (USART2_BASE_ADDR + 0x04);
-	*USART2_DR = data;
-
-	uint32_t* USART2_SR = (uint32_t*) (USART2_BASE_ADDR + 0x00);
-	while (((*USART2_SR >> 7) & 1) == 0);	// wait until the data is transferred to the Shift Register
+	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE_ADDR + 0x14);
+	 if (state == ON)
+	 {
+		 *GPIOD_ODR |= (0b1 << (12 + color));
+	 }
+	 else
+	 {
+		 *GPIOD_ODR &= ~(0b1 << (12 + color));
+	 }
 }
 
-void USART2_Init()
+void DMA2_Init()
 {
-	/* USART2 - AF07 ~ PD5 - TX , PD6 - RX */
+	__HAL_RCC_DMA2_CLK_ENABLE();
+	uint32_t* DMA2_S2PAR = (uint32_t*) (DMA2_BASE_ADDR + (0x18 + 0x18 * 2));
+	*DMA2_S2PAR = (USART1_BASE_ADDR + 0x04);	// set USART1_DR register as Source
+
+	uint32_t* DMA2_S2M0AR = (uint32_t*) (DMA2_BASE_ADDR + (0x1C + 0x18 * 2));
+	*DMA2_S2M0AR = (uint32_t) rx_buf;		// set str address as Destination
+
+	uint32_t* DMA_S2NDTR = (uint32_t*) (DMA2_BASE_ADDR + (0x14 + 0x18 * 2));
+	*DMA_S2NDTR = sizeof(rx_buf);	// set number of bytes to transfer
+
+	uint32_t* DMA_S2CR = (uint32_t*) (DMA2_BASE_ADDR + (0x10 + 0x18 * 2));
+	*DMA_S2CR |= (0b100 << 25);	// select channel 4
+	*DMA_S2CR |= (1 << 10);	// enable memory increment mode
+	*DMA_S2CR |= (1 << 8);	// enable circular mode
+	*DMA_S2CR |= (1 << 4); 	// enable transfer complete interrupt
+	*DMA_S2CR |= (1 << 0);	// enable Stream --- ** ENABLE THE PERIPHERAL IS ALWAYS THE LAST STEP **
+
+	uint32_t* NVIC_ISER1 = (uint32_t*) 0xE000E104;
+	*NVIC_ISER1 |= (1 << 26);	// accept interrupt signal from DMA2
+}
+
+void LEDs_Init()
+{
 	__HAL_RCC_GPIOD_CLK_ENABLE();
 	uint32_t* GPIOD_MODER = (uint32_t*) (GPIOD_BASE_ADDR + 0x00);
-	uint32_t* GPIOD_AFRL = (uint32_t*) (GPIOD_BASE_ADDR + 0x20);
-	*GPIOD_MODER &= ~(0xf << 10);
-	*GPIOD_MODER |= (0b1010 << 10); // configure PD5 and PD6 at AF mode
-	*GPIOD_AFRL &= ~(0xff << 20);
-	*GPIOD_AFRL |= (7 << 20) | (7 << 24);	// AF07 for PD5 and PD6
-
-	__HAL_RCC_USART2_CLK_ENABLE();
-	uint32_t* USART2_CR1 = (uint32_t*) (USART2_BASE_ADDR + 0x0C);
-	uint32_t* USART2_BRR = (uint32_t*) (USART2_BASE_ADDR + 0x08);
-	*USART2_CR1 |= (1 << 12);	// set word length = 9 data bits
-	*USART2_CR1 |= (1 << 10); 	// enable parity control
-	*USART2_CR1 |= (1 << 9); 	// select odd parity
-	*USART2_CR1 |= (1 << 3); 	// enable transmitter
-	*USART2_BRR = (69 << 4) | (0b0111 << 0);	// set baud rate at 14400 bps
-	*USART2_CR1 |= (1 << 13); 	// enable USART
+	*GPIOD_MODER &= ~(0xff << 24);		// clear pin PD12, PD13, PD14, PD15
+	*GPIOD_MODER |= (0b01010101 << 24);	// set PD12, PD13, PD14, PD15 as OUTPUT
 }
 
-void TIM2_Init()
+/*
+ 	 - PB6: UART1 TX
+ 	 - PB7: UART1 RX
+ 	 - Baud rate: 9600bps
+ 	 - Parity: even
+ */
+void USART1_Init()
 {
-	__HAL_RCC_TIM2_CLK_ENABLE();
-	uint32_t* TIM2_CR1 = (uint32_t*) (TIM2_BASE_ADDR + 0x00);
-	*TIM2_CR1 &= ~(1 << 4);	// up-counter
-	*TIM2_CR1 &= ~(1 << 0); // make sure CEN = 0 (stop timer)
+	__HAL_RCC_GPIOB_CLK_ENABLE();
+	uint32_t* GPIOB_MODER = (uint32_t*) (GPIOB_BASE_ADDR + 0x00);
+	uint32_t* GPIOB_AFRL = (uint32_t*) (GPIOB_BASE_ADDR + 0x20);
+	*GPIOB_MODER &= ~(0b1111 << 12);// clear bit pin PB6 and PB7
+	*GPIOB_MODER |= (0b1010 << 12);	// set PB6 and PB7 in AF mode
+	*GPIOB_AFRL &= ~(0xff << 24);	// clear bit pin AFRL6 and AFRL7
+	*GPIOB_AFRL |= (0b0111 << 24) | (0b0111 << 28); // select AF7 for AFRL6 and AFRL7
 
-	uint32_t* TIM2_PSC = (uint32_t*) (TIM2_BASE_ADDR + 0x28);
-	*TIM2_PSC = 16 - 1;		// PSC = N - 1, set CLK_TIM2 = 1 MHz
+	__HAL_RCC_USART1_CLK_ENABLE();
+	uint32_t* USART1_CR1 = (uint32_t*) (USART1_BASE_ADDR + 0x0C);
+	uint32_t* USART1_BRR = (uint32_t*) (USART1_BASE_ADDR + 0x08);
+	*USART1_CR1 |= (0b1 << 12);	// set word length
+	*USART1_CR1 |= (0b1 << 10); // enable parity bit
+	*USART1_CR1 &= ~(0b1 << 9); // select Even parity
+	*USART1_CR1 |= (0b11 << 2); // enable transmitter & receiver
+	*USART1_CR1 |= (0b1 << 13); // enable USART1
+	*USART1_BRR = (104 << 4) | (3 << 0); // set baud rate at 9600bps
 
-	uint32_t* TIM2_EGR = (uint32_t*) (TIM2_BASE_ADDR + 0x14);
-	*TIM2_EGR |= (1 << 0); 	// enable update generation
+	uint32_t* USART1_CR3 = (uint32_t*) (USART1_BASE_ADDR + 0x14);
+	*USART1_CR3 |= (1 << 6);	// enable DMA receiver
 
-	*TIM2_CR1 |= (1 << 0);	// enable counter
-}
-
-void HCSR04_Init()
-{
-	__HAL_RCC_GPIOC_CLK_ENABLE();
-	uint32_t* GPIOC_MODER = (uint32_t*) (GPIOC_BASE_ADDR + 0x00);
-	*GPIOC_MODER &= ~(0b1111 << 12);	// set PC6 as INPUT ~ ECHO
-	*GPIOC_MODER |= (0b01 << 14);	// set PC7 as OUTPUT ~ TRIG
+//	*USART1_CR1 |= (0b1 << 5); 	// generate interrupt
+//	uint32_t* NVIC_ISER1 = (uint32_t*) 0xE000E104;
+//	*NVIC_ISER1 |= (0b1 << 5);	// accept Interrupt signal from UART
 }
