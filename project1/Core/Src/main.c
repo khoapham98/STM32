@@ -10,16 +10,16 @@
 #define FLASH_R_BASE_ADDR 0x40023C00
 
 typedef enum{
-	GREEN, ORANGE, RED, BLUE
-} color_t;
+	GREEN, ORANGE, RED, BLUE, DATA, UPDATE, NONE
+} cmd_t;
 
 typedef enum{
 	OFF, ON
 } state_t;
 
-char rx_buf[5496] = {0};
+char rx_buf[6000] = {0};
 int _index = 0;
-char* c[4] = { "Green", "Orange", "Red", "Blue" };
+char* color[4] = { "Green", "Orange", "Red", "Blue" };
 char* s[2] = { "OFF", "ON" };
 char recv_new_fw_complete = 0;
 
@@ -27,8 +27,8 @@ void USART1_Init();
 void USART_send_char(char data);
 void USART_send_string(char* str, ...);
 void LEDs_Init();
-void ctrl_LED(color_t color, state_t state);
-color_t get_color();
+void ctrl_LED(cmd_t color, state_t state);
+cmd_t get_data();
 state_t get_state();
 char is_done();
 void USART1_IRQHandler();
@@ -37,7 +37,9 @@ void DMA2_Stream2_IRQHandler();
 void flash_erase_sector(int sec_num);
 void flash_program(uint8_t* addr, uint8_t val);
 void unlock_flash_CR();
-void update();
+void update(int fw_size);
+void clear_rx_buf();
+int get_size();
 
 int main()
 {
@@ -48,26 +50,71 @@ int main()
 	USART_send_string("Day la firmware version 0.0\n");
 	while(1)
 	{
-		ctrl_LED(BLUE, ON);
-		HAL_Delay(1000);
-		ctrl_LED(BLUE, OFF);
-		HAL_Delay(1000);
-		update();
+		if (is_done())
+		{
+			if (get_data() == UPDATE)
+			{
+				clear_rx_buf();
+				USART_send_string("Enter the size of firmware (byte): ");
+				while (!is_done());
+				int fw_size = get_size();
+				if (fw_size > sizeof(rx_buf))
+				{
+					USART_send_string("The size of this firmware is too large\n");
+					break;
+				}
+				clear_rx_buf();
+				if (rx_buf[fw_size / 2] == 0)
+				{
+					USART_send_string("Please send the firmware to complete the upload process!\n");
+					while (rx_buf[fw_size - 61] == 0);
+					USART_send_string("Firmware upload successfully!\n");
+				}
+				update(fw_size);
+			}
+			else if (get_data() != NONE)
+			{
+				ctrl_LED(get_data(), get_state());
+				USART_send_string("%s LED is %s\n", color[get_data()], s[get_state()]);
+				clear_rx_buf();
+			}
+		}
 	}
 	return 0;
 }
 
-__attribute__((section(".ham_tren_RAM"))) void update()
+int get_size()
 {
-	if (recv_new_fw_complete == 1)
+	int index = 0;
+	int size = 0;
+	while (rx_buf[index] >= '0' && rx_buf[index] <= '9')
 	{
-		__asm("CPSID i");
-		flash_erase_sector(0);
-		for (int i = 0; i < sizeof(rx_buf); i++)
-		{
-			flash_program(0x08000000 + i, rx_buf[i]);
-		}
+		size *= 10;
+		size += (rx_buf[index++] - 48);
 	}
+	return size;
+}
+
+void clear_rx_buf()
+{
+	memset(rx_buf, 0, sizeof(rx_buf));
+	uint32_t* DMA_S2M0AR = (uint32_t*) (DMA2_BASE_ADDR + 0x1C + 0x18 * 2);
+	uint32_t* DMA_S2CR = (uint32_t*) (DMA2_BASE_ADDR + 0x10 + 0x18 * 2);
+	*DMA_S2CR &= ~(1 << 0);	// stream disabled
+	*DMA_S2M0AR = (uint32_t) rx_buf;	// reset memory 0 address
+	*DMA_S2CR |= 1 << 0;	// stream enabled
+}
+
+__attribute__((section(".ham_tren_RAM"))) void update(int fw_size)
+{
+	__asm("CPSID i");
+	flash_erase_sector(0);
+	for (int i = 0; i < fw_size; i++)
+	{
+		flash_program(0x08000000 + i, rx_buf[i]);
+	}
+	uint32_t* AIRCR = (uint32_t*) 0xE000ED0C;
+	*AIRCR = (0x5FA << 16) | (1 << 2);
 }
 
 __attribute__((section(".ham_tren_RAM"))) void unlock_flash_CR()
@@ -110,6 +157,15 @@ __attribute__((section(".ham_tren_RAM"))) void flash_program(uint8_t* addr, uint
 	while (((*FLASH_SR >> 16) & 1) == 1);	// wait for BSY bit to be cleared
 }
 
+char is_done()
+{
+	int size = sizeof(rx_buf);
+	for (int i = 0; i < size; i++)
+	{
+		if (rx_buf[i] == '\n') { return 1; }
+	}
+	return 0;
+}
 
 void DMA2_Stream2_IRQHandler()
 {
@@ -117,34 +173,26 @@ void DMA2_Stream2_IRQHandler()
 	uint32_t* DMA2_LIFCR = (uint32_t*) (DMA2_BASE_ADDR + 0x08);
 	*DMA2_LIFCR |= (1 << 21);	// clear transfer complete interrupt flag
 }
-
 void USART1_IRQHandler()
 {
 	uint32_t* USART1_DR = (uint32_t*) (USART1_BASE_ADDR + 0x04);
 	rx_buf[_index++] = *USART1_DR;
 }
 
-color_t get_color()
+cmd_t get_data()
 {
 	if (strstr(rx_buf, "green") != NULL) { return GREEN;}
 	else if (strstr(rx_buf, "orange") != NULL) { return ORANGE; }
 	else if (strstr(rx_buf, "red") != NULL) { return RED; }
-	else {return BLUE;}
+	else if (strstr(rx_buf, "blue") != NULL) { return BLUE; }
+	else if (strstr(rx_buf, "update") != NULL) { return UPDATE; }
+	else { return NONE; }
 }
 
 state_t get_state()
 {
 	if (strstr(rx_buf, "on") != NULL) { return ON; }
 	else { return OFF; }
-}
-
-char is_done()
-{
-	for (int i = 0; i < 20; i++)
-	{
-		if (rx_buf[i] == '\n') { return 1; }
-	}
-	return 0;
 }
 
 void USART_send_char(char data)
@@ -170,7 +218,7 @@ void USART_send_string(char* str, ...)
 	va_end(list);
 }
 
-void ctrl_LED(color_t color, state_t state)
+void ctrl_LED(cmd_t color, state_t state)
 {
 	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE_ADDR + 0x14);
 	 if (state == ON)
@@ -183,6 +231,10 @@ void ctrl_LED(color_t color, state_t state)
 	 }
 }
 
+/* ==  DMA2 channel 4  ==
+	- Source: UART1 DR
+	- Destination: rx_buf
+ */
 void DMA2_Init()
 {
 	__HAL_RCC_DMA2_CLK_ENABLE();
@@ -190,7 +242,7 @@ void DMA2_Init()
 	*DMA2_S2PAR = (USART1_BASE_ADDR + 0x04);	// set USART1_DR register as Source
 
 	uint32_t* DMA2_S2M0AR = (uint32_t*) (DMA2_BASE_ADDR + (0x1C + 0x18 * 2));
-	*DMA2_S2M0AR = (uint32_t) rx_buf;		// set str address as Destination
+	*DMA2_S2M0AR = (uint32_t) rx_buf;		// set rx_buffer address as Destination
 
 	uint32_t* DMA_S2NDTR = (uint32_t*) (DMA2_BASE_ADDR + (0x14 + 0x18 * 2));
 	*DMA_S2NDTR = sizeof(rx_buf);	// set number of bytes to transfer
