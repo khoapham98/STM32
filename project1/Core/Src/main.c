@@ -40,6 +40,9 @@ void master_recv(uint16_t data)
 	/* wait until the data has been transmitted */
 	while (((*SPI_SR >> 7) & 1) == 1);
 
+	/* wait until the RX buffer is not empty */
+	while ((*SPI_SR & 1) == 0);
+
 	/* read dummy data to clear the RX buffer */
 	tmp = *SPI_DR;
 
