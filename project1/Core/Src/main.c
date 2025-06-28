@@ -16,10 +16,54 @@ int main()
 
 	while (1)
 	{
-
+		x = master_read(0x20);
+		master_write(0x20, 10);
+		y = master_read(0x20);
 	}
 
 	return 0;
+}
+void master_write(uint16_t addr, uint16_t data)
+{
+	uint32_t* GPIOE_ODR = (uint32_t*) (GPIOE_BASE_ADDR + 0x14);
+	uint16_t* SPI_DR = (uint16_t*) (SPI1_BASE_ADDR + 0x0C);
+	uint16_t* SPI_SR = (uint16_t*) (SPI1_BASE_ADDR + 0x08);
+
+	/* select slave */
+	*GPIOE_ODR &= ~(1 << 3);
+
+	/* wait until the TX buffer is empty*/
+	while (((*SPI_SR >> 1) & 1) == 0);
+
+	/* write data into DR register */
+	*SPI_DR = addr;
+
+	/* wait until the data has been transmitted */
+	while (((*SPI_SR >> 7) & 1) == 1);
+
+	/* wait until the RX buffer is not empty */
+	while ((*SPI_SR & 1) == 0);
+
+	/* read dummy data to clear the RX buffer */
+	int tmp = *SPI_DR;
+
+	/* wait until the TX buffer is empty*/
+	while (((*SPI_SR >> 1) & 1) == 0);
+
+	/* write dummy data into DR register */
+	*SPI_DR = data;
+
+	/* wait until the data has been transmitted */
+	while (((*SPI_SR >> 7) & 1) == 1);
+
+	/* wait until the RX buffer is not empty */
+	while ((*SPI_SR & 1) == 0);
+
+	/* read data that is sent by slave */
+	tmp = *SPI_DR;
+
+	/* un-active slave */
+	*GPIOE_ODR |= 1 << 3;
 }
 
 uint16_t master_read(uint16_t addr)
