@@ -5,9 +5,10 @@
 #define SPI1_BASE_ADDR 0x40013000
 
 void SPI_Init();
-void master_recv(uint16_t data);
+uint16_t master_read(uint16_t addr);
+void master_write(uint16_t addr, uint16_t data);
 volatile uint16_t tmp = 0;
-
+uint16_t x = 0, y = 0;
 int main()
 {
 	HAL_Init();
@@ -15,14 +16,13 @@ int main()
 
 	while (1)
 	{
-		master_recv(0x8f);
-		HAL_Delay(1000);
+
 	}
 
 	return 0;
 }
 
-void master_recv(uint16_t data)
+uint16_t master_read(uint16_t addr)
 {
 	uint32_t* GPIOE_ODR = (uint32_t*) (GPIOE_BASE_ADDR + 0x14);
 	uint16_t* SPI_DR = (uint16_t*) (SPI1_BASE_ADDR + 0x0C);
@@ -35,7 +35,7 @@ void master_recv(uint16_t data)
 	while (((*SPI_SR >> 1) & 1) == 0);
 
 	/* write data into DR register */
-	*SPI_DR = data;
+	*SPI_DR = addr | (1 << 7);
 
 	/* wait until the data has been transmitted */
 	while (((*SPI_SR >> 7) & 1) == 1);
@@ -44,7 +44,7 @@ void master_recv(uint16_t data)
 	while ((*SPI_SR & 1) == 0);
 
 	/* read dummy data to clear the RX buffer */
-	tmp = *SPI_DR;
+	int tmp = *SPI_DR;
 
 	/* wait until the TX buffer is empty*/
 	while (((*SPI_SR >> 1) & 1) == 0);
@@ -63,6 +63,8 @@ void master_recv(uint16_t data)
 
 	/* un-active slave */
 	*GPIOE_ODR |= 1 << 3;
+
+	return tmp;
 }
 
 /*	== SPI1 ==
