@@ -1,141 +1,164 @@
 #include "main.h"
 
-#define GPIOE_BASE_ADDR 0x40021000
-#define GPIOA_BASE_ADDR 0x40020000
-#define SPI1_BASE_ADDR 0x40013000
+#define WRITE 0x00
+#define READ 0x01
+#define GPIOB_BASE_ADDR 0x40020400
+#define I2C1_BASE_ADDR 0x40005400
+#define ACCEL_ADDR 0x19
+#define MAGNE_ADDR 0x1E
 
-void SPI_Init();
-uint16_t master_read(uint16_t addr);
-void master_write(uint16_t addr, uint16_t data);
-volatile uint16_t tmp = 0;
-uint16_t x = 0, y = 0;
+char master_send(uint8_t slave_addr, uint8_t reg_addr, uint8_t data);
+uint8_t master_read(uint8_t slave_addr, uint8_t reg_addr);
+void I2C_Init();
+
 int main()
 {
 	HAL_Init();
-	SPI_Init();
+	I2C_Init();
+	uint8_t x = 10;
+	volatile uint8_t data = 0;
 
 	while (1)
 	{
-		x = master_read(0x20);
-		master_write(0x20, 10);
-		y = master_read(0x20);
+		data = master_read(ACCEL_ADDR, 0x2F);
+		master_send(ACCEL_ADDR, 0x20, x);
+		x++;
 	}
+	return 0;
+}
+uint8_t master_read(uint8_t slave_addr, uint8_t reg_addr)
+{
+	uint16_t* I2C_CR1 = (uint16_t*) (I2C1_BASE_ADDR + 0x00);
+	uint16_t* I2C_DR  = (uint16_t*) (I2C1_BASE_ADDR + 0x10);
+	uint16_t* I2C_SR1 = (uint16_t*) (I2C1_BASE_ADDR + 0x14);
+	uint16_t* I2C_SR2 = (uint16_t*) (I2C1_BASE_ADDR + 0x18);
+
+	/* wait until bus is free */
+	while (((*I2C_SR2 >> 1) & 1) == 1);
+
+	/* send start bit */
+	*I2C_CR1 |= 1 << 8;
+
+	/* wait for start is generated */
+	while ((*I2C_SR1 & 1) == 0);
+
+	/* send slave address + write mode */
+	*I2C_DR  = (slave_addr << 1) | WRITE;
+
+	/* wait for slave address is transmitted */
+	while (((*I2C_SR1 >> 1) & 1) == 0);
+	volatile uint16_t tmp = *I2C_SR2;
+
+	/* check ACK */
+	if (((*I2C_SR1 >> 10) & 1) == 1) { return 1; }
+
+	/* send register address */
+	*I2C_DR = reg_addr;
+
+	/* wait for register address is transmitted */
+	while (((*I2C_SR1 >> 7) & 1) == 0);
+
+	/* check ACK */
+	if (((*I2C_SR1 >> 10) & 1) == 1) { return 1; }
+
+	/* send start bit */
+	*I2C_CR1 |= 1 << 8;
+
+	/* wait for start is generated */
+	while ((*I2C_SR1 & 1) == 0);
+
+	/* send slave address + read mode */
+	*I2C_DR = (slave_addr << 1) | READ;
+
+	/* wait for slave address is transmitted */
+	while (((*I2C_SR1 >> 1) & 1) == 0);
+	tmp = *I2C_SR2;
+
+	/* check ACK */
+	if (((*I2C_SR1 >> 10) & 1) == 1) { return 1; }
+
+	/* read data */
+	volatile uint8_t data = *I2C_DR;	// Breakpoint here
+
+	/* send stop bit */
+	*I2C_CR1 |= 1 << 9;
+
+	return data;
+}
+
+char master_send(uint8_t slave_addr, uint8_t reg_addr, uint8_t data)
+{
+	uint16_t* I2C_CR1 = (uint16_t*) (I2C1_BASE_ADDR + 0x00);
+	uint16_t* I2C_DR  = (uint16_t*) (I2C1_BASE_ADDR + 0x10);
+	uint16_t* I2C_SR1 = (uint16_t*) (I2C1_BASE_ADDR + 0x14);
+	uint16_t* I2C_SR2 = (uint16_t*) (I2C1_BASE_ADDR + 0x18);
+
+	/* wait until bus is free */
+	while (((*I2C_SR2 >> 1) & 1) == 1);
+
+	/* send start bit */
+	*I2C_CR1 |= 1 << 8;
+
+	/* wait for start is generated */
+	while ((*I2C_SR1 & 1) == 0);
+
+	/* send slave address */
+	*I2C_DR = (slave_addr << 1) | WRITE;
+
+	/* wait for slave address is transmitted */
+	while (((*I2C_SR1 >> 1) & 1) == 0);
+	volatile uint16_t tmp = *I2C_SR2;
+
+	/* check ACK */
+	if (((*I2C_SR1 >> 10) & 1) == 1) { return 1; }
+
+	/* send register address */
+	*I2C_DR = reg_addr;
+
+	/* wait for register address is transmitted */
+	while (((*I2C_SR1 >> 7) & 1) == 0);
+
+	/* check ACK */
+	if (((*I2C_SR1 >> 10) & 1) == 1) { return 1; }
+
+	/* send data */
+	*I2C_DR = data;
+
+	/* wait for data is transmitted */
+	while (((*I2C_SR1 >> 7) & 1) == 0);
+
+	/* check ACK */
+	if (((*I2C_SR1 >> 10) & 1) == 1) { return 1; }
+
+	/* send stop bit */
+	*I2C_CR1 |= 1 << 9;
 
 	return 0;
 }
-void master_write(uint16_t addr, uint16_t data)
-{
-	uint32_t* GPIOE_ODR = (uint32_t*) (GPIOE_BASE_ADDR + 0x14);
-	uint16_t* SPI_DR = (uint16_t*) (SPI1_BASE_ADDR + 0x0C);
-	uint16_t* SPI_SR = (uint16_t*) (SPI1_BASE_ADDR + 0x08);
 
-	/* select slave */
-	*GPIOE_ODR &= ~(1 << 3);
-
-	/* wait until the TX buffer is empty*/
-	while (((*SPI_SR >> 1) & 1) == 0);
-
-	/* write data into DR register */
-	*SPI_DR = addr;
-
-	/* wait until the data has been transmitted */
-	while (((*SPI_SR >> 7) & 1) == 1);
-
-	/* wait until the RX buffer is not empty */
-	while ((*SPI_SR & 1) == 0);
-
-	/* read dummy data to clear the RX buffer */
-	int tmp = *SPI_DR;
-
-	/* wait until the TX buffer is empty*/
-	while (((*SPI_SR >> 1) & 1) == 0);
-
-	/* write dummy data into DR register */
-	*SPI_DR = data;
-
-	/* wait until the data has been transmitted */
-	while (((*SPI_SR >> 7) & 1) == 1);
-
-	/* wait until the RX buffer is not empty */
-	while ((*SPI_SR & 1) == 0);
-
-	/* read data that is sent by slave */
-	tmp = *SPI_DR;
-
-	/* un-active slave */
-	*GPIOE_ODR |= 1 << 3;
-}
-
-uint16_t master_read(uint16_t addr)
-{
-	uint32_t* GPIOE_ODR = (uint32_t*) (GPIOE_BASE_ADDR + 0x14);
-	uint16_t* SPI_DR = (uint16_t*) (SPI1_BASE_ADDR + 0x0C);
-	uint16_t* SPI_SR = (uint16_t*) (SPI1_BASE_ADDR + 0x08);
-
-	/* select slave */
-	*GPIOE_ODR &= ~(1 << 3);
-
-	/* wait until the TX buffer is empty*/
-	while (((*SPI_SR >> 1) & 1) == 0);
-
-	/* write data into DR register */
-	*SPI_DR = addr | (1 << 7);
-
-	/* wait until the data has been transmitted */
-	while (((*SPI_SR >> 7) & 1) == 1);
-
-	/* wait until the RX buffer is not empty */
-	while ((*SPI_SR & 1) == 0);
-
-	/* read dummy data to clear the RX buffer */
-	int tmp = *SPI_DR;
-
-	/* wait until the TX buffer is empty*/
-	while (((*SPI_SR >> 1) & 1) == 0);
-
-	/* write dummy data into DR register */
-	*SPI_DR = 0x00;
-
-	/* wait until the data has been transmitted */
-	while (((*SPI_SR >> 7) & 1) == 1);
-
-	/* wait until the RX buffer is not empty */
-	while ((*SPI_SR & 1) == 0);
-
-	/* read data that is sent by slave */
-	tmp = *SPI_DR;
-
-	/* un-active slave */
-	*GPIOE_ODR |= 1 << 3;
-
-	return tmp;
-}
-
-/*	== SPI1 ==
-	- PA5: SCK
-	- PA6: MISO
-	- PA7: MOSI
-	- PE3: SS
+/*
+	PB6: SCL
+	PB9: SDA
  */
-void SPI_Init()
+void I2C_Init()
 {
-	__HAL_RCC_GPIOA_CLK_ENABLE();
-	__HAL_RCC_GPIOE_CLK_ENABLE();
-	uint32_t* GPIOE_MODER = (uint32_t*) (GPIOE_BASE_ADDR + 0x00);
-	uint32_t* GPIOA_MODER = (uint32_t*) (GPIOA_BASE_ADDR + 0x00);
-	uint32_t* GPIOA_AFRL = (uint32_t*) (GPIOA_BASE_ADDR + 0x20);
-	*GPIOA_MODER &= ~(0xff << 10);	// clear bit
-	*GPIOA_MODER |= (0b10 << 10) | (0b10 << 12) | (0b10 << 14);	// set PA5, PA6, PA7 at AF mode
-	*GPIOE_MODER |= (0b01 << 6);	// set PE3 at OUTPUT mode
-	*GPIOA_AFRL &= ~(0xfff << 20);	// clear bit
-	*GPIOA_AFRL |= (5 << 20) | (5 << 24) | (5 << 28);	// select AF05
+	__HAL_RCC_GPIOB_CLK_ENABLE();
+	uint32_t* GPIOB_MODER = (uint32_t*) (GPIOB_BASE_ADDR + 0x00);
+	uint32_t* GPIOB_AFRL = (uint32_t*) (GPIOB_BASE_ADDR + 0x20);
+	uint32_t* GPIOB_AFRH = (uint32_t*) (GPIOB_BASE_ADDR + 0x24);
+	*GPIOB_MODER &= ~((0b11 << (6 * 2)) | (0b11 << (9 * 2)));
+	*GPIOB_MODER |= (0b10 << (6 * 2)) | (0b10 << (9 * 2));
+	*GPIOB_AFRL &= ~(0xf << 24);
+	*GPIOB_AFRL |= 4 << 24;
+	*GPIOB_AFRH &= ~(0xf << 4);
+	*GPIOB_AFRH |= 4 << 4;
 
-	__HAL_RCC_SPI1_CLK_ENABLE();
-	uint16_t* SPI_CR1 = (uint16_t*) (SPI1_BASE_ADDR + 0x00);
-	*SPI_CR1 |= 1 << 2;	// master mode
-	*SPI_CR1 &= ~(0b111 << 3);	// clear bit
-	*SPI_CR1 |= (0b011 << 3);	// configure Clock = 1MHz
-	*SPI_CR1 |= 1 << 9;	// Software slave management enabled
-	*SPI_CR1 |= 1 << 8;	// Internal slave select
-	*SPI_CR1 |= 1 << 6;	// SPI enable
+	__HAL_RCC_I2C1_CLK_ENABLE();
+	uint16_t* I2C_CR1 = (uint16_t*) (I2C1_BASE_ADDR + 0x00);
+	uint16_t* I2C_CR2 = (uint16_t*) (I2C1_BASE_ADDR + 0x04);
+	uint16_t* I2C_CCR = (uint16_t*) (I2C1_BASE_ADDR + 0x1C);
+	*I2C_CR2 |= 16;
+	*I2C_CCR = 80;
+	*I2C_CR1 |= 1 << 0;
 }
+

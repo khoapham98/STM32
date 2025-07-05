@@ -1,4 +1,4 @@
-../Core/Src/main.c:12:5:main	1
-../Core/Src/main.c:26:6:master_write	7
-../Core/Src/main.c:69:10:master_read	7
-../Core/Src/main.c:120:6:SPI_Init	1
+../Core/Src/main.c:15:5:main	1
+../Core/Src/main.c:29:9:master_read	10
+../Core/Src/main.c:89:6:master_send	9
+../Core/Src/main.c:143:6:I2C_Init	1
