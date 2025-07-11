@@ -8,27 +8,51 @@ void delay_microsecond(uint32_t time);
 void delay_milisecond(uint32_t time);
 void TIM1_UP_TIM10_IRQHandler();
 void INT_delay_second(uint32_t time);
+void systick_init();
+void systick_delay_1s();
 uint32_t cnt = 0;
 
 int main()
 {
 	LED_Init();
 	TIM1_Init();
-
+	systick_init();
 	while (1)
 	{
 		LED_Ctrl(1);
-		INT_delay_second(10);
+		systick_delay_1s();
+//		INT_delay_second(2);
 		LED_Ctrl(0);
-		INT_delay_second(30);
+		systick_delay_1s();
+//		INT_delay_second(4);
 	}
 	return 0;
+}
+
+void systick_delay_1s()
+{
+	uint32_t* STK_CTRL  = (uint32_t*) (0xE000E010);
+//	*STK_CTRL &= ~(1 << 16);
+	while (((*STK_CTRL >> 16) & 1) == 0);
+	*STK_CTRL &= ~(1 << 16);
+}
+
+void systick_init()
+{
+	uint32_t* STK_CTRL  = (uint32_t*) (0xE000E010);
+	uint32_t* STK_LOAD  = (uint32_t*) (0xE000E014);
+	/* select clock = 16MHz & enable interrupt */
+	*STK_CTRL |= 1 << 1;
+	/* reload every 1 second */
+	*STK_LOAD = 2000 * 1000 - 1;
+	/* enable counter */
+	*STK_CTRL |= 1 << 0;
 }
 
 void INT_delay_second(uint32_t time)
 {
 	cnt = 0;
-	while (cnt <= time);
+	while (cnt < time);
 }
 
 void TIM1_UP_TIM10_IRQHandler()
@@ -122,7 +146,6 @@ void TIM1_Init()
 	/* counter enable */
 	*TIM1_CR1 |= 1 << 0;
 }
-
 void LED_Init()
 {
 	__HAL_RCC_GPIOD_CLK_ENABLE();
@@ -130,7 +153,6 @@ void LED_Init()
 	*GPIOD_MODER &= ~(0b11 << (15 * 2));
 	*GPIOD_MODER |= (0b01 << (15 * 2));
 }
-
 void LED_Ctrl(char on)
 {
 	uint32_t* GPIOD_ODR = (uint32_t*) (GPIOD_BASE + 0x14);
