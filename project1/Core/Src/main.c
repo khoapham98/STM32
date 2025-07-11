@@ -19,11 +19,55 @@ int main()
 	return 0;
 }
 
+/* min: 1us -> max: 4095us */
+void delay_microsecond(uint32_t time)
+{
+	if (time == 0) return;
+	uint16_t* TIM1_SR = (uint16_t*) (TIM1_BASE_ADDR + 0x10);
+	uint16_t* TIM1_EGR = (uint16_t*) (TIM1_BASE_ADDR + 0x14);
+	uint16_t* TIM1_ARR = (uint16_t*) (TIM1_BASE_ADDR + 0x2C);
+	uint16_t* TIM1_PSC = (uint16_t*) (TIM1_BASE_ADDR + 0x28);
+	uint16_t* TIM1_CNT = (uint16_t*) (TIM1_BASE_ADDR + 0x24);
+	*TIM1_ARR = time * 16;
+	*TIM1_PSC = 1 - 1;
+	*TIM1_CNT = 0;
+	*TIM1_EGR |= 1 << 0;
+	*TIM1_SR &= ~(1 << 0);
+	while ((*TIM1_SR & 1) == 0);
+	*TIM1_SR &= ~(1 << 0);
+}
+
+/* min: 1ms -> max: 131ms */
+void delay_milisecond(uint32_t time)
+{
+	if (time == 0) return;
+	uint16_t* TIM1_SR = (uint16_t*) (TIM1_BASE_ADDR + 0x10);
+	uint16_t* TIM1_EGR = (uint16_t*) (TIM1_BASE_ADDR + 0x14);
+	uint16_t* TIM1_ARR = (uint16_t*) (TIM1_BASE_ADDR + 0x2C);
+	uint16_t* TIM1_PSC = (uint16_t*) (TIM1_BASE_ADDR + 0x28);
+	uint16_t* TIM1_CNT = (uint16_t*) (TIM1_BASE_ADDR + 0x24);
+	if (time <= 65)
+	{
+		*TIM1_ARR = time * 1000;
+		*TIM1_PSC = 16 - 1;
+	}
+	else if (time > 65)
+	{
+		*TIM1_ARR = (time / 2) * 1000;
+		*TIM1_PSC = 32 - 1;
+	}
+	*TIM1_CNT = 0;
+	*TIM1_EGR |= 1 << 0;
+	*TIM1_SR &= ~(1 << 0);
+	while ((*TIM1_SR & 1) == 0);
+	*TIM1_SR &= ~(1 << 0);
+}
+
 /* min: 1s -> max: 131s */
 void delay_second(uint32_t time)
 {
+	if (time == 0) return;
 	uint16_t* TIM1_SR = (uint16_t*) (TIM1_BASE_ADDR + 0x10);
-	uint16_t* TIM1_CNT = (uint16_t*) (TIM1_BASE_ADDR + 0x24);
 	uint16_t* TIM1_EGR = (uint16_t*) (TIM1_BASE_ADDR + 0x14);
 	uint16_t* TIM1_ARR = (uint16_t*) (TIM1_BASE_ADDR + 0x2C);
 	uint16_t* TIM1_PSC = (uint16_t*) (TIM1_BASE_ADDR + 0x28);
@@ -47,12 +91,6 @@ void TIM1_Init()
 {
 	__HAL_RCC_TIM1_CLK_ENABLE();
 	uint16_t* TIM1_CR1 = (uint16_t*) (TIM1_BASE_ADDR + 0x00);
-	uint16_t* TIM1_PSC = (uint16_t*) (TIM1_BASE_ADDR + 0x28);
-	uint16_t* TIM1_ARR = (uint16_t*) (TIM1_BASE_ADDR + 0x2C);
-	/* set ARR */
-	*TIM1_ARR = 1000;
-	/* set prescaler ~ 1 tick = 1ms */
-	*TIM1_PSC = 15999;
 	/* counter enable */
 	*TIM1_CR1 |= 1 << 0;
 }
