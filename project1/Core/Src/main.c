@@ -4,19 +4,38 @@ void LED_Ctrl(char on);
 void LED_Init();
 void TIM1_Init();
 void delay_second(uint32_t time);
+void delay_microsecond(uint32_t time);
+void delay_milisecond(uint32_t time);
+void TIM1_UP_TIM10_IRQHandler();
+void INT_delay_second(uint32_t time);
+uint32_t cnt = 0;
 
 int main()
 {
 	LED_Init();
 	TIM1_Init();
+
 	while (1)
 	{
 		LED_Ctrl(1);
-		delay_second(4);
+		INT_delay_second(10);
 		LED_Ctrl(0);
-		delay_second(8);
+		INT_delay_second(30);
 	}
 	return 0;
+}
+
+void INT_delay_second(uint32_t time)
+{
+	cnt = 0;
+	while (cnt <= time);
+}
+
+void TIM1_UP_TIM10_IRQHandler()
+{
+	uint16_t* TIM1_SR = (uint16_t*) (TIM1_BASE_ADDR + 0x10);
+	*TIM1_SR &= ~(1 << 0);
+	cnt++;
 }
 
 /* min: 1us -> max: 4095us */
@@ -90,7 +109,16 @@ void delay_second(uint32_t time)
 void TIM1_Init()
 {
 	__HAL_RCC_TIM1_CLK_ENABLE();
-	uint16_t* TIM1_CR1 = (uint16_t*) (TIM1_BASE_ADDR + 0x00);
+	uint16_t* TIM1_CR1  = (uint16_t*) (TIM1_BASE_ADDR + 0x00);
+	uint16_t* TIM1_DIER = (uint16_t*) (TIM1_BASE_ADDR + 0x0C);
+	uint16_t* TIM1_ARR = (uint16_t*) (TIM1_BASE_ADDR + 0x2C);
+	uint16_t* TIM1_PSC = (uint16_t*) (TIM1_BASE_ADDR + 0x28);
+	uint32_t* NVIC_ISER0 = (uint32_t*) (0xE000E100);
+	*TIM1_ARR = 1000;
+	*TIM1_PSC = 16000 - 1;
+	/* enable interrupt */
+	*TIM1_DIER |= 1 << 0;
+	*NVIC_ISER0 |= 1 << 25;
 	/* counter enable */
 	*TIM1_CR1 |= 1 << 0;
 }
