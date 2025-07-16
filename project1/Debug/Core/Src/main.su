@@ -1,11 +1,5 @@
-../Core/Src/main.c:15:5:main	8	static
-../Core/Src/main.c:32:6:systick_delay_1s	16	static
-../Core/Src/main.c:40:6:systick_init	16	static
-../Core/Src/main.c:52:6:INT_delay_second	16	static
-../Core/Src/main.c:58:6:TIM1_UP_TIM10_IRQHandler	16	static
-../Core/Src/main.c:66:6:delay_microsecond	40	static
-../Core/Src/main.c:84:6:delay_milisecond	40	static
-../Core/Src/main.c:110:6:delay_second	32	static
-../Core/Src/main.c:133:6:TIM1_Init	32	static
-../Core/Src/main.c:149:6:LED_Init	16	static
-../Core/Src/main.c:156:6:LED_Ctrl	24	static
+../Core/Src/main.c:17:5:main	8	static
+../Core/Src/main.c:30:9:master_read	40	static
+../Core/Src/main.c:90:9:master_receive	40	static
+../Core/Src/main.c:124:9:master_transfer	40	static
+../Core/Src/main.c:155:6:I2C_Init	40	static
