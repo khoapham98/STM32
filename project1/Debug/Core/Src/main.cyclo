@@ -1,5 +1,4 @@
-../Core/Src/main.c:17:5:main	1
-../Core/Src/main.c:30:9:master_read	9
-../Core/Src/main.c:90:9:master_receive	9
-../Core/Src/main.c:124:9:master_transfer	8
-../Core/Src/main.c:155:6:I2C_Init	1
+../Core/Src/main.c:8:5:main	1
+../Core/Src/main.c:21:7:convert2Temp	1
+../Core/Src/main.c:27:7:readVin	2
+../Core/Src/main.c:42:6:ADC_Init	1
