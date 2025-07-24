@@ -83,11 +83,6 @@ osMessageQueueId_t data_queue_Handle;
 const osMessageQueueAttr_t data_queue__attributes = {
   .name = "data_queue_"
 };
-/* Definitions for uart_lock_ */
-osMutexId_t uart_lock_Handle;
-const osMutexAttr_t uart_lock__attributes = {
-  .name = "uart_lock_"
-};
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -100,7 +95,7 @@ void task1_blink_red_led(void *argument);
 void task2_blink_blue_led(void *argument);
 void task3_send_hello(void *argument);
 void task4_send_xinchao(void *argument);
-void task5_read_data(void *argument);
+void task5_print_log(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -108,13 +103,19 @@ void task5_read_data(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void my_printf(char* str)
+void my_printf()
+{
+	uint8_t tmp;
+	osMessageQueueGet(data_queue_Handle, &tmp, 0, HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart1, &tmp, 1, HAL_MAX_DELAY);
+}
+
+void put_string_to_Queue(uint8_t* str)
 {
 	int str_len = strlen(str);
 	for (int i = 0; i < str_len; i++)
 	{
-		HAL_UART_Transmit(&huart1, (uint8_t*) &str[i], 1, HAL_MAX_DELAY);
-		osDelay(100);
+		osMessageQueuePut(data_queue_Handle, &str[i], 0, HAL_MAX_DELAY);
 	}
 }
 /* USER CODE END 0 */
@@ -155,9 +156,6 @@ int main(void)
 
   /* Init scheduler */
   osKernelInitialize();
-  /* Create the mutex(es) */
-  /* creation of uart_lock_ */
-  uart_lock_Handle = osMutexNew(&uart_lock__attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -173,7 +171,7 @@ int main(void)
 
   /* Create the queue(s) */
   /* creation of data_queue_ */
-  data_queue_Handle = osMessageQueueNew (16, sizeof(int), &data_queue__attributes);
+  data_queue_Handle = osMessageQueueNew (128, sizeof(uint8_t), &data_queue__attributes);
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
@@ -193,7 +191,7 @@ int main(void)
   task4Handle = osThreadNew(task4_send_xinchao, NULL, &task4_attributes);
 
   /* creation of task5 */
-  task5Handle = osThreadNew(task5_read_data, NULL, &task5_attributes);
+  task5Handle = osThreadNew(task5_print_log, NULL, &task5_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -377,11 +375,10 @@ void task3_send_hello(void *argument)
 {
   /* USER CODE BEGIN task3_send_hello */
   /* Infinite loop */
+	uint8_t data[] = "hello\n";
   for(;;)
   {
-	  osMutexAcquire(uart_lock_Handle, HAL_MAX_DELAY);
-	  my_printf("hello\n");
-	  osMutexRelease(uart_lock_Handle);
+	  put_string_to_Queue(data);
     osDelay(1000);
   }
   /* USER CODE END task3_send_hello */
@@ -398,37 +395,32 @@ void task4_send_xinchao(void *argument)
 {
   /* USER CODE BEGIN task4_send_xinchao */
   /* Infinite loop */
-  int tmp = 0;
+  uint8_t data[] = "xin chao\n";
 	for(;;)
   {
-	  osMessageQueueGet(data_queue_Handle, &tmp, 0, HAL_MAX_DELAY);
-	  osMutexAcquire(uart_lock_Handle, HAL_MAX_DELAY);
-	  my_printf("xin chao\n");
-	  osMutexRelease(uart_lock_Handle);
+	  put_string_to_Queue(data);
     osDelay(1000);
   }
   /* USER CODE END task4_send_xinchao */
 }
 
-/* USER CODE BEGIN Header_task5_read_data */
+/* USER CODE BEGIN Header_task5_print_log */
 /**
 * @brief Function implementing the task5 thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_task5_read_data */
-void task5_read_data(void *argument)
+/* USER CODE END Header_task5_print_log */
+void task5_print_log(void *argument)
 {
-  /* USER CODE BEGIN task5_read_data */
+  /* USER CODE BEGIN task5_print_log */
   /* Infinite loop */
-	int cnt = 0;
   for(;;)
   {
-	  cnt++;
-	  osMessageQueuePut(data_queue_Handle, &cnt, 0, HAL_MAX_DELAY);
-    osDelay(500);
+	  my_printf();
+    osDelay(100);
   }
-  /* USER CODE END task5_read_data */
+  /* USER CODE END task5_print_log */
 }
 
 /**
