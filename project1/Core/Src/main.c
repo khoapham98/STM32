@@ -19,10 +19,12 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "cmsis_os.h"
-#include <string.h>
+
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdarg.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,31 +59,15 @@ const osThreadAttr_t task2_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityLow,
 };
-/* Definitions for task3 */
-osThreadId_t task3Handle;
-const osThreadAttr_t task3_attributes = {
-  .name = "task3",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for task4 */
-osThreadId_t task4Handle;
-const osThreadAttr_t task4_attributes = {
-  .name = "task4",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
-};
-/* Definitions for task5 */
-osThreadId_t task5Handle;
-const osThreadAttr_t task5_attributes = {
-  .name = "task5",
-  .stack_size = 128 * 4,
-  .priority = (osPriority_t) osPriorityLow,
-};
 /* Definitions for data_queue_ */
 osMessageQueueId_t data_queue_Handle;
 const osMessageQueueAttr_t data_queue__attributes = {
   .name = "data_queue_"
+};
+/* Definitions for uart_ */
+osMutexId_t uart_Handle;
+const osMutexAttr_t uart__attributes = {
+  .name = "uart_"
 };
 /* USER CODE BEGIN PV */
 
@@ -93,9 +79,6 @@ static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 void task1_blink_red_led(void *argument);
 void task2_blink_blue_led(void *argument);
-void task3_send_hello(void *argument);
-void task4_send_xinchao(void *argument);
-void task5_print_log(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -103,20 +86,21 @@ void task5_print_log(void *argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void my_printf()
-{
-	uint8_t tmp;
-	osMessageQueueGet(data_queue_Handle, &tmp, 0, HAL_MAX_DELAY);
-	HAL_UART_Transmit(&huart1, &tmp, 1, HAL_MAX_DELAY);
-}
+char* state[] = { "Inactive", "Ready", "Running", "Blocked", "Terminated" };
 
-void put_string_to_Queue(uint8_t* str)
+void my_print_log(const char* str, ...)
 {
-	int str_len = strlen(str);
+	va_list args;
+	va_start(args, str);
+	char buf[100] = {0};
+	vsprintf(buf, str, args);
+	int str_len = strlen(buf);
 	for (int i = 0; i < str_len; i++)
 	{
-		osMessageQueuePut(data_queue_Handle, &str[i], 0, HAL_MAX_DELAY);
+		HAL_UART_Transmit(&huart1, (uint8_t*) &buf[i], 1, HAL_MAX_DELAY);
+		osDelay(100);
 	}
+	va_end(args);
 }
 /* USER CODE END 0 */
 
@@ -156,6 +140,9 @@ int main(void)
 
   /* Init scheduler */
   osKernelInitialize();
+  /* Create the mutex(es) */
+  /* creation of uart_ */
+  uart_Handle = osMutexNew(&uart__attributes);
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
@@ -183,15 +170,6 @@ int main(void)
 
   /* creation of task2 */
   task2Handle = osThreadNew(task2_blink_blue_led, NULL, &task2_attributes);
-
-  /* creation of task3 */
-  task3Handle = osThreadNew(task3_send_hello, NULL, &task3_attributes);
-
-  /* creation of task4 */
-  task4Handle = osThreadNew(task4_send_xinchao, NULL, &task4_attributes);
-
-  /* creation of task5 */
-  task5Handle = osThreadNew(task5_print_log, NULL, &task5_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -339,8 +317,10 @@ void task1_blink_red_led(void *argument)
   /* Infinite loop */
   for(;;)
   {
-	  HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-    osDelay(1000);
+	  osMutexAcquire(uart_Handle, HAL_MAX_DELAY);
+	  my_print_log("Task 1 is Running\n");
+	  osMutexRelease(uart_Handle);
+    osDelay(5000);
   }
   /* USER CODE END 5 */
 }
@@ -356,71 +336,18 @@ void task2_blink_blue_led(void *argument)
 {
   /* USER CODE BEGIN task2_blink_blue_led */
   /* Infinite loop */
+	osThreadState_t task1_state, task2_state;
   for(;;)
   {
-	  HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_15);
-    osDelay(3000);
+	  task1_state = osThreadGetState(task1Handle);
+	  task2_state = osThreadGetState(task2Handle);
+	  osMutexAcquire(uart_Handle, HAL_MAX_DELAY);
+	  my_print_log("Task 1 is %s\n", state[task1_state]);
+	  my_print_log("Task 2 is %s\n", state[task2_state]);
+	  osMutexRelease(uart_Handle);
+    osDelay(1000);
   }
   /* USER CODE END task2_blink_blue_led */
-}
-
-/* USER CODE BEGIN Header_task3_send_hello */
-/**
-* @brief Function implementing the task3 thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_task3_send_hello */
-void task3_send_hello(void *argument)
-{
-  /* USER CODE BEGIN task3_send_hello */
-  /* Infinite loop */
-	uint8_t data[] = "hello\n";
-  for(;;)
-  {
-	  put_string_to_Queue(data);
-    osDelay(1000);
-  }
-  /* USER CODE END task3_send_hello */
-}
-
-/* USER CODE BEGIN Header_task4_send_xinchao */
-/**
-* @brief Function implementing the task4 thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_task4_send_xinchao */
-void task4_send_xinchao(void *argument)
-{
-  /* USER CODE BEGIN task4_send_xinchao */
-  /* Infinite loop */
-  uint8_t data[] = "xin chao\n";
-	for(;;)
-  {
-	  put_string_to_Queue(data);
-    osDelay(1000);
-  }
-  /* USER CODE END task4_send_xinchao */
-}
-
-/* USER CODE BEGIN Header_task5_print_log */
-/**
-* @brief Function implementing the task5 thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_task5_print_log */
-void task5_print_log(void *argument)
-{
-  /* USER CODE BEGIN task5_print_log */
-  /* Infinite loop */
-  for(;;)
-  {
-	  my_printf();
-    osDelay(100);
-  }
-  /* USER CODE END task5_print_log */
 }
 
 /**
